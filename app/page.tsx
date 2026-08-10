@@ -1,5 +1,6 @@
 // app/page.tsx
 import type { Metadata } from "next";
+import Link from "next/link";
 
 export const metadata: Metadata = {
   title: "StudioOS — AI-Powered Film Greenlighting & Production OS",
@@ -54,7 +55,7 @@ export default function LandingPage() {
           className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between"
           aria-label="Main Navigation"
         >
-          <a
+          <Link
             href="/"
             className="flex items-center gap-2 text-2xl font-black tracking-tight text-white group"
           >
@@ -62,36 +63,36 @@ export default function LandingPage() {
               🎬
             </span>
             Studio<span className="text-indigo-400">OS</span>
-          </a>
+          </Link>
 
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-400">
-            <a
+            <Link
               href="#architecture"
               className="hover:text-slate-100 transition-colors"
             >
               Agent Architecture
-            </a>
-            <a
+            </Link>
+            <Link
               href="#parallel"
               className="hover:text-slate-100 transition-colors"
             >
               Parallel Integration
-            </a>
-            <a
+            </Link>
+            <Link
               href="#features"
               className="hover:text-slate-100 transition-colors"
             >
               Features
-            </a>
+            </Link>
           </div>
 
           <div className="flex items-center gap-4">
-            <a
+            <Link
               href="#demo"
               className="px-5 py-2.5 text-sm font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-all duration-200 hover:shadow-indigo-500/50 hover:-translate-y-0.5 active:translate-y-0"
             >
               Launch Dashboard →
-            </a>
+            </Link>
           </div>
         </nav>
       </header>
@@ -119,22 +120,28 @@ export default function LandingPage() {
           </h1>
 
           <p className="text-lg md:text-2xl text-slate-400 max-w-3xl mx-auto mb-12 leading-relaxed font-normal">
-            Orchestrate autonomous <strong className="text-slate-200 font-semibold">Gemini Director agents</strong>, execute live industry research via <strong className="text-slate-200 font-semibold">Parallel</strong>, and go from pitch to greenlight in minutes.
+            Orchestrate autonomous{" "}
+            <strong className="text-slate-200 font-semibold">
+              Gemini Director agents
+            </strong>
+            , execute live industry research via{" "}
+            <strong className="text-slate-200 font-semibold">Parallel</strong>,
+            and go from pitch to greenlight in minutes.
           </p>
 
           <div className="flex flex-col sm:flex-row justify-center items-center gap-4 mb-20">
-            <a
+            <Link
               href="#demo"
               className="w-full sm:w-auto px-8 py-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 font-bold text-white shadow-xl shadow-indigo-600/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
             >
               Explore Project Neon Lagos
-            </a>
-            <a
+            </Link>
+            <Link
               href="#architecture"
               className="w-full sm:w-auto px-8 py-4 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 font-semibold text-slate-300 transition-all"
             >
               View System Flow
-            </a>
+            </Link>
           </div>
 
           {/* Interactive Agent Terminal Preview */}
