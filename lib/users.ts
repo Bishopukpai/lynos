@@ -3,9 +3,25 @@ import getMongoClient from "./mongodb";
 
 export interface User {
   _id?: ObjectId;
+
+  // Account information
   name: string;
   email: string;
   password: string;
+
+  // Location information
+  country: string;
+  timezone: string;
+  language: string;
+  stateRegion?: string;
+
+  // Workspace information
+  role?: string;
+  useCases: string[];
+  companyName?: string;
+  teamSize?: string;
+
+  // Timestamps
   createdAt: Date;
   updatedAt: Date;
 }
@@ -21,12 +37,17 @@ let indexesEnsured = false;
 let indexPromise: Promise<string> | null = null;
 
 export async function ensureUserIndexes() {
-  if (indexesEnsured) return;
+  if (indexesEnsured) {
+    return;
+  }
 
   if (!indexPromise) {
     indexPromise = getUsersCollection()
       .then((users) =>
-        users.createIndex({ email: 1 }, { unique: true })
+        users.createIndex(
+          { email: 1 },
+          { unique: true }
+        )
       )
       .catch((error) => {
         indexPromise = null;
@@ -35,5 +56,6 @@ export async function ensureUserIndexes() {
   }
 
   await indexPromise;
+
   indexesEnsured = true;
 }
