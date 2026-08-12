@@ -1,5 +1,5 @@
 import { ObjectId } from "mongodb";
-import clientPromise from "./mongodb";
+import getMongoClient from "./mongodb";
 
 export interface User {
   _id?: ObjectId;
@@ -11,7 +11,7 @@ export interface User {
 }
 
 export async function getUsersCollection() {
-  const client = await clientPromise;
+  const client = await getMongoClient();
   const db = client.db(process.env.MONGODB_DB);
 
   return db.collection<User>("users");
