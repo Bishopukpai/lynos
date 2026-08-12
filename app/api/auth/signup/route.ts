@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+
 import { signUpSchema } from "@/lib/validation/auth";
-import {getUsersCollection, ensureUserIndexes} from "@/lib/users";
+import {
+  getUsersCollection,
+  ensureUserIndexes,
+} from "@/lib/users";
 
 export async function POST(request: Request) {
   try {
@@ -20,49 +24,87 @@ export async function POST(request: Request) {
       );
     }
 
-    // Validate input with Zod
+    // Validate incoming data with Zod
     const result = signUpSchema.safeParse(body);
 
     if (!result.success) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid signup data",
-          errors: result.error.flatten().fieldErrors,
-        },
-        { status: 400 }
-      );
-    }
+  console.error(
+    "Signup validation errors:",
+    result.error.flatten()
+  );
 
-const { name, email, password } = result.data;
-
-await ensureUserIndexes();
-
-const users = await getUsersCollection();
-
-// Check whether the email already exists
-const existingUser = await users.findOne({ email });
-
-if (existingUser) {
   return NextResponse.json(
     {
       success: false,
-      message: "An account with this email already exists",
+      message: "Invalid signup data",
+      errors: result.error.flatten().fieldErrors,
     },
-    { status: 409 }
+    { status: 400 }
   );
 }
 
-    
-    // Hash the password before storing it
+    // Extract validated account data
+    const { user, profile } = result.data;
+
+    const {
+      name,
+      email,
+      password,
+    } = user;
+
+    // Extract validated profile data
+    const {
+      country,
+      timezone,
+      language,
+      stateRegion,
+      role,
+      useCases,
+      companyName,
+      teamSize,
+    } = profile;
+
+    // Ensure the unique email index exists
+    await ensureUserIndexes();
+
+    const users = await getUsersCollection();
+
+    // Check whether the email already exists
+    const existingUser = await users.findOne({ email });
+
+    if (existingUser) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "An account with this email already exists",
+        },
+        { status: 409 }
+      );
+    }
+
+    // Hash password before storing it
     const hashedPassword = await bcrypt.hash(password, 12);
 
     const now = new Date();
 
+    // Create user
     const resultInsert = await users.insertOne({
       name,
       email,
       password: hashedPassword,
+
+      // Location / profile information
+      country,
+      timezone,
+      language,
+      stateRegion,
+
+      // Workspace information
+      role,
+      useCases,
+      companyName,
+      teamSize,
+
       createdAt: now,
       updatedAt: now,
     });
