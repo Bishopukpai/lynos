@@ -86,12 +86,19 @@ export default function LandingPage() {
             </Link>
           </div>
 
+          {/* Authentication Actions */}
           <div className="flex items-center gap-4">
             <Link
-              href="#demo"
+              href="/signin"
+              className="px-4 py-2 text-sm font-semibold text-slate-300 hover:text-white transition-colors"
+            >
+              Log In
+            </Link>
+            <Link
+              href="/signup"
               className="px-5 py-2.5 text-sm font-semibold rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/30 transition-all duration-200 hover:shadow-indigo-500/50 hover:-translate-y-0.5 active:translate-y-0"
             >
-              Launch Dashboard →
+              Sign Up →
             </Link>
           </div>
         </nav>
@@ -131,10 +138,10 @@ export default function LandingPage() {
 
           <div className="flex flex-col sm:flex-row justify-center items-center gap-4 mb-20">
             <Link
-              href="#demo"
+              href="/signup"
               className="w-full sm:w-auto px-8 py-4 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 font-bold text-white shadow-xl shadow-indigo-600/25 transition-all hover:scale-[1.02] active:scale-[0.98]"
             >
-              Explore Project Neon Lagos
+              Get Started Free
             </Link>
             <Link
               href="#architecture"
@@ -169,7 +176,7 @@ export default function LandingPage() {
               </div>
               <div className="pl-6 border-l-2 border-indigo-500/40 space-y-2 text-slate-400">
                 <p className="text-indigo-300">
-                  [Gemini Director] Formulating research strategy across Market & Talent agents...
+                  [Gemini Director] Formulating research strategy across Market &amp; Talent agents...
                 </p>
                 <p className="text-purple-300">
                   [Parallel MCP] Fetching live audience sentiment &amp; regional box-office comps...
