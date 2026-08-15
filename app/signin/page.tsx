@@ -57,7 +57,9 @@ function SignInForm() {
     return Object.keys(errors).length === 0;
   };
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (
+    event: FormEvent<HTMLFormElement>
+  ) => {
     event.preventDefault();
 
     setError("");
@@ -78,20 +80,49 @@ function SignInForm() {
         callbackUrl,
       });
 
+      /*
+       * Rate-limit response.
+       *
+       * The backend must return the specific RATE_LIMITED
+       * authentication error when the email + IP combination
+       * is temporarily blocked.
+       */
+      if (result?.error === "RATE_LIMITED") {
+        setError(
+          "Too many failed sign-in attempts. Please try again later."
+        );
+        return;
+      }
+
+      /*
+       * Generic authentication failure.
+       *
+       * Do not reveal whether:
+       * - the email exists
+       * - the password is wrong
+       * - the account exists
+       */
       if (result?.error) {
         setError("Invalid email or password.");
         return;
       }
 
+      /*
+       * Successful authentication.
+       */
       if (result?.ok) {
         router.push(result.url || callbackUrl);
         router.refresh();
         return;
       }
 
+      /*
+       * Unexpected authentication response.
+       */
       setError("Unable to sign in. Please try again.");
     } catch (error) {
       console.error("Sign-in error:", error);
+
       setError("Something went wrong. Please try again.");
     } finally {
       setLoading(false);
@@ -132,6 +163,7 @@ function SignInForm() {
       <div className="mt-8">
         <div className="relative flex items-center">
           <div className="w-full border-t border-slate-200" />
+
           <span className="absolute left-1/2 -translate-x-1/2 bg-white px-3 text-xs font-medium uppercase tracking-wider text-slate-500">
             Sign in with email
           </span>
@@ -139,7 +171,11 @@ function SignInForm() {
       </div>
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="mt-8 space-y-5" noValidate>
+      <form
+        onSubmit={handleSubmit}
+        className="mt-8 space-y-5"
+        noValidate
+      >
         {/* Email */}
         <div>
           <label
@@ -239,18 +275,24 @@ function SignInForm() {
               }`}
               aria-invalid={Boolean(fieldErrors.password)}
               aria-describedby={
-                fieldErrors.password ? "password-error" : undefined
+                fieldErrors.password
+                  ? "password-error"
+                  : undefined
               }
             />
 
             <button
               type="button"
               onClick={() =>
-                setShowPassword((previous) => !previous)
+                setShowPassword(
+                  (previous) => !previous
+                )
               }
               className="absolute inset-y-0 right-0 flex items-center pr-3.5 text-slate-400 transition hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-600/20"
               aria-label={
-                showPassword ? "Hide password" : "Show password"
+                showPassword
+                  ? "Hide password"
+                  : "Show password"
               }
             >
               {showPassword ? (
@@ -278,8 +320,9 @@ function SignInForm() {
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     strokeWidth={1.5}
-                    d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"
+                    d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573 3.007-9.963 7.178z"
                   />
+
                   <path
                     strokeLinecap="round"
                     strokeLinejoin="round"
@@ -372,7 +415,7 @@ function SignInForm() {
 
       {/* Signup Link */}
       <p className="mt-6 text-center text-xs text-slate-600">
-         Don&apos;t have an account?{" "}
+        Don&apos;t have an account?{" "}
         <Link
           href="/signup"
           className="font-semibold text-indigo-600 transition hover:text-indigo-500 hover:underline"
@@ -395,6 +438,7 @@ export default function SignInPage() {
         fallback={
           <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-xl">
             <div className="mx-auto h-6 w-6 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-600" />
+
             <p className="mt-3 text-sm text-slate-500">
               Loading sign-in...
             </p>

@@ -1,20 +1,11 @@
 import { ObjectId } from "mongodb";
-
 import getMongoClientPromise from "@/lib/mongodb";
 
 const RATE_LIMIT_COLLECTION = "auth_rate_limits";
 
-// Maximum number of failed attempts allowed within the window.
 const MAX_FAILED_ATTEMPTS = 5;
-
-// Number of milliseconds in the failed-attempt window.
-const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
-
-// How long a user/IP combination remains locked after reaching the limit.
-const LOCKOUT_MS = 15 * 60 * 1000; // 15 minutes
-
-// MongoDB automatically removes records after this amount of inactivity.
-const TTL_SECONDS = 60 * 60; // 1 hour
+const WINDOW_MS = 15 * 60 * 1000;
+const LOCKOUT_MS = 15 * 60 * 1000;
 
 interface RateLimitRecord {
   _id?: ObjectId;
@@ -33,69 +24,41 @@ async function getRateLimitCollection() {
 }
 
 /**
- * Ensures the indexes required by the rate limiter exist.
+ * Creates the indexes required by the rate-limit collection.
  *
- * The initialization is cached so we don't repeatedly attempt to
- * create the same indexes during authentication requests.
- */
-let indexesEnsured = false;
-let indexPromise: Promise<void> | null = null;
-
-export async function ensureRateLimitIndexes(): Promise<void> {
-  if (indexesEnsured) {
-    return;
-  }
-
-  if (!indexPromise) {
-    indexPromise = getRateLimitCollection()
-      .then(async (collection) => {
-        // Ensures one rate-limit record exists per email + IP combination.
-        await collection.createIndex(
-          { key: 1 },
-          {
-            unique: true,
-          }
-        );
-
-        // Automatically remove old rate-limit records.
-        await collection.createIndex(
-          { lastAttemptAt: 1 },
-          {
-            expireAfterSeconds: TTL_SECONDS,
-          }
-        );
-      })
-      .catch((error) => {
-        // Allow a later request to retry initialization if it failed.
-        indexPromise = null;
-        throw error;
-      });
-  }
-
-  await indexPromise;
-
-  indexesEnsured = true;
-}
-
-/**
- * Normalizes an email address before it is used in the rate-limit key.
- */
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
-
-/**
- * Creates the identifier used by the rate limiter.
+ * The unique key prevents duplicate records for the same
+ * email + IP combination.
  *
- * The combination of email + IP means that repeated failed attempts
- * against one account from one IP are throttled.
+ * The TTL index is only for database cleanup.
+ * Actual lockout enforcement is handled by checkSignInRateLimit().
  */
-function createRateLimitKey(email: string, ip: string): string {
-  return `${normalizeEmail(email)}:${ip}`;
+export async function ensureRateLimitIndexes() {
+  const collection = await getRateLimitCollection();
+
+  await collection.createIndex(
+    { key: 1 },
+    { unique: true }
+  );
+
+  await collection.createIndex(
+    { lastAttemptAt: 1 },
+    { expireAfterSeconds: 15 * 60 }
+  );
 }
 
 /**
- * Checks whether another sign-in attempt is currently allowed.
+ * Creates a rate-limit key using both the normalized email
+ * address and the originating IP address.
+ */
+function createRateLimitKey(
+  email: string,
+  ip: string
+): string {
+  return `${email.toLowerCase().trim()}:${ip}`;
+}
+
+/**
+ * Checks whether a sign-in attempt is currently allowed.
  */
 export async function checkSignInRateLimit(
   email: string,
@@ -104,14 +67,11 @@ export async function checkSignInRateLimit(
   allowed: boolean;
   retryAfterSeconds?: number;
 }> {
-  await ensureRateLimitIndexes();
-
   const collection = await getRateLimitCollection();
   const key = createRateLimitKey(email, ip);
 
   const record = await collection.findOne({ key });
 
-  // No previous failures.
   if (!record) {
     return {
       allowed: true,
@@ -120,11 +80,12 @@ export async function checkSignInRateLimit(
 
   const now = Date.now();
 
-  /*
-   * Check active lockout first.
+  /**
+   * Check active lockout.
    */
   if (record.lockedUntil) {
-    const lockedUntilMs = record.lockedUntil.getTime();
+    const lockedUntilMs =
+      record.lockedUntil.getTime();
 
     if (lockedUntilMs > now) {
       return {
@@ -143,10 +104,11 @@ export async function checkSignInRateLimit(
     };
   }
 
-  /*
-   * Check whether the failed-attempt window has expired.
+  /**
+   * Check whether the current failure window has expired.
    */
-  const firstAttemptMs = record.firstAttemptAt.getTime();
+  const firstAttemptMs =
+    record.firstAttemptAt.getTime();
 
   if (now - firstAttemptMs >= WINDOW_MS) {
     await collection.deleteOne({ key });
@@ -156,17 +118,19 @@ export async function checkSignInRateLimit(
     };
   }
 
-  /*
-   * Check whether the maximum number of failures has been reached.
+  /**
+   * Five failed attempts means the account/IP
+   * combination is temporarily blocked.
    */
-  if (record.failedAttempts >= MAX_FAILED_ATTEMPTS) {
-    const retryAfterSeconds = Math.ceil(
-      (firstAttemptMs + WINDOW_MS - now) / 1000
-    );
-
+  if (
+    record.failedAttempts >=
+    MAX_FAILED_ATTEMPTS
+  ) {
     return {
       allowed: false,
-      retryAfterSeconds: Math.max(retryAfterSeconds, 1),
+      retryAfterSeconds: Math.ceil(
+        (firstAttemptMs + WINDOW_MS - now) / 1000
+      ),
     };
   }
 
@@ -178,37 +142,38 @@ export async function checkSignInRateLimit(
 /**
  * Records a failed sign-in attempt.
  *
- * Uses an atomic MongoDB increment for existing records to reduce
- * race-condition problems when multiple requests arrive simultaneously.
+ * Failed attempts are tracked separately for each
+ * email + IP combination.
  */
 export async function recordFailedSignIn(
   email: string,
   ip: string
 ): Promise<void> {
-  await ensureRateLimitIndexes();
-
   const collection = await getRateLimitCollection();
 
   const key = createRateLimitKey(email, ip);
-
   const now = new Date();
   const nowMs = now.getTime();
 
-  const existingRecord = await collection.findOne({ key });
+  const record = await collection.findOne({ key });
 
-  /*
-   * No existing record or the previous attempt window has expired.
+  /**
+   * Start a new failure window if:
    *
-   * Start a new window.
+   * - no record exists, or
+   * - the previous failure window expired.
    */
   if (
-    !existingRecord ||
-    nowMs - existingRecord.firstAttemptAt.getTime() >= WINDOW_MS
+    !record ||
+    nowMs -
+      record.firstAttemptAt.getTime() >=
+      WINDOW_MS
   ) {
     await collection.updateOne(
       { key },
       {
         $set: {
+          key,
           failedAttempts: 1,
           firstAttemptAt: now,
           lastAttemptAt: now,
@@ -225,40 +190,37 @@ export async function recordFailedSignIn(
     return;
   }
 
-  /*
-   * Atomically increment the failure count.
+  /**
+   * Atomically increment the failed-attempt counter.
    */
-  const updatedRecord = await collection.findOneAndUpdate(
-    { key },
-    {
-      $inc: {
-        failedAttempts: 1,
+  const updatedRecord =
+    await collection.findOneAndUpdate(
+      { key },
+      {
+        $inc: {
+          failedAttempts: 1,
+        },
+        $set: {
+          lastAttemptAt: now,
+        },
       },
-      $set: {
-        lastAttemptAt: now,
-      },
-    },
-    {
-      returnDocument: "after",
-    }
-  );
+      {
+        returnDocument: "after",
+      }
+    );
 
-  /*
-   * Lock the email + IP combination once the maximum
-   * number of failed attempts has been reached.
+  /**
+   * Lock the email + IP combination after
+   * the fifth failed attempt.
    */
   if (
     updatedRecord &&
-    updatedRecord.failedAttempts >= MAX_FAILED_ATTEMPTS &&
+    updatedRecord.failedAttempts >=
+      MAX_FAILED_ATTEMPTS &&
     !updatedRecord.lockedUntil
   ) {
     await collection.updateOne(
-      {
-        key,
-        lockedUntil: {
-          $exists: false,
-        },
-      },
+      { key },
       {
         $set: {
           lockedUntil: new Date(
@@ -271,14 +233,13 @@ export async function recordFailedSignIn(
 }
 
 /**
- * Clears the failed sign-in history after a successful login.
+ * Clears the failed-login record after
+ * a successful authentication.
  */
 export async function clearSignInRateLimit(
   email: string,
   ip: string
 ): Promise<void> {
-  await ensureRateLimitIndexes();
-
   const collection = await getRateLimitCollection();
 
   const key = createRateLimitKey(email, ip);
