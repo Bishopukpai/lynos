@@ -35,17 +35,26 @@ function getClientIp(req: {
 }): string {
   const forwardedFor = req.headers?.["x-forwarded-for"];
 
-  if (typeof forwardedFor === "string" && forwardedFor.length > 0) {
+  if (
+    typeof forwardedFor === "string" &&
+    forwardedFor.length > 0
+  ) {
     return forwardedFor.split(",")[0].trim();
   }
 
-  if (Array.isArray(forwardedFor) && forwardedFor.length > 0) {
+  if (
+    Array.isArray(forwardedFor) &&
+    forwardedFor.length > 0
+  ) {
     return forwardedFor[0].trim();
   }
 
   const realIp = req.headers?.["x-real-ip"];
 
-  if (typeof realIp === "string" && realIp.length > 0) {
+  if (
+    typeof realIp === "string" &&
+    realIp.length > 0
+  ) {
     return realIp.trim();
   }
 
@@ -62,6 +71,7 @@ export const authOptions: NextAuthOptions = {
           label: "Email",
           type: "email",
         },
+
         password: {
           label: "Password",
           type: "password",
@@ -70,9 +80,15 @@ export const authOptions: NextAuthOptions = {
 
       async authorize(credentials, req) {
         /*
+         * -------------------------------------------------------
+         * 1. VALIDATE CREDENTIALS
+         * -------------------------------------------------------
+         *
          * Server-side validation is the actual security boundary.
          */
-        const result = signInSchema.safeParse(credentials);
+
+        const result =
+          signInSchema.safeParse(credentials);
 
         if (!result.success) {
           return null;
@@ -81,47 +97,70 @@ export const authOptions: NextAuthOptions = {
         const { email, password } = result.data;
 
         /*
-         * Normalize the email before using it for:
+         * -------------------------------------------------------
+         * 2. NORMALIZE EMAIL
+         * -------------------------------------------------------
+         *
+         * The same normalized email is used for:
+         *
          * - database lookup
          * - rate limiting
          */
-        const normalizedEmail = email.toLowerCase().trim();
+
+        const normalizedEmail =
+          email.toLowerCase().trim();
 
         /*
-         * Identify the client.
+         * -------------------------------------------------------
+         * 3. IDENTIFY CLIENT
+         * -------------------------------------------------------
          */
+
         const ip = getClientIp(req);
 
         /*
-         * Check rate limit BEFORE performing authentication.
+         * -------------------------------------------------------
+         * 4. CHECK SIGN-IN RATE LIMIT
+         * -------------------------------------------------------
          *
          * After five failed attempts for the same
          * email + IP combination, authentication is blocked
          * for 15 minutes.
          */
-        const rateLimit = await checkSignInRateLimit(
-          normalizedEmail,
-          ip
-        );
+
+        const rateLimit =
+          await checkSignInRateLimit(
+            normalizedEmail,
+            ip
+          );
 
         if (!rateLimit.allowed) {
           /*
-           * Return null rather than revealing whether the
-           * account exists or whether the user is locked.
-           *
-           * NextAuth will expose the same generic authentication
-           * failure to the frontend.
+           * Do not reveal whether the account exists
+           * or whether the account is currently locked.
            */
           throw new Error("RATE_LIMITED");
         }
 
-        const users = await getUsersCollection();
+        /*
+         * -------------------------------------------------------
+         * 5. FIND USER
+         * -------------------------------------------------------
+         */
 
-        const user = await users.findOne({
-          email: normalizedEmail,
-        });
+        const users =
+          await getUsersCollection();
+
+        const user =
+          await users.findOne({
+            email: normalizedEmail,
+          });
 
         /*
+         * -------------------------------------------------------
+         * 6. PASSWORD VERIFICATION
+         * -------------------------------------------------------
+         *
          * Always perform bcrypt comparison.
          *
          * Existing account:
@@ -129,33 +168,38 @@ export const authOptions: NextAuthOptions = {
          *
          * Non-existent/OAuth-only account:
          *   use the dummy hash.
+         *
+         * This helps reduce timing differences between
+         * existing and non-existing accounts.
          */
-        const passwordHash =
-          user?.password || DUMMY_PASSWORD_HASH;
 
-        const passwordMatches = await bcrypt.compare(
-          password,
-          passwordHash
-        );
+        const passwordHash =
+          user?.password ||
+          DUMMY_PASSWORD_HASH;
+
+        const passwordMatches =
+          await bcrypt.compare(
+            password,
+            passwordHash
+          );
 
         /*
-         * Authentication failure.
+         * -------------------------------------------------------
+         * 7. AUTHENTICATION FAILURE
+         * -------------------------------------------------------
          *
-         * This covers:
+         * These cases are intentionally treated identically:
+         *
          * - unknown email
          * - OAuth-only account
          * - incorrect password
-         *
-         * All failures are treated identically.
          */
+
         if (
           !user ||
           !user.password ||
           !passwordMatches
         ) {
-          /*
-           * Only failed credential attempts are recorded.
-           */
           await recordFailedSignIn(
             normalizedEmail,
             ip
@@ -165,52 +209,158 @@ export const authOptions: NextAuthOptions = {
         }
 
         /*
-         * Successful authentication.
+         * -------------------------------------------------------
+         * 8. SUCCESSFUL AUTHENTICATION
+         * -------------------------------------------------------
          *
-         * Remove the previous failed-attempt record so the
-         * user starts with a clean rate-limit state.
+         * Clear the previous failed-attempt record.
          */
+
         await clearSignInRateLimit(
           normalizedEmail,
           ip
         );
 
+        /*
+         * Do not set activeOrganizationId here.
+         *
+         * A user may belong to multiple organizations.
+         *
+         * The workspace-switching flow will establish the
+         * active organization after verifying membership.
+         */
+
         return {
           id: user._id
             ? user._id.toString()
             : "",
+
           name: user.name,
+
           email: user.email,
         };
       },
     }),
   ],
 
+  /*
+   * ---------------------------------------------------------
+   * SESSION CONFIGURATION
+   * ---------------------------------------------------------
+   */
+
   session: {
     strategy: "jwt",
   },
 
+  /*
+   * ---------------------------------------------------------
+   * CALLBACKS
+   * ---------------------------------------------------------
+   */
+
   callbacks: {
-    async jwt({ token, user }) {
+    /**
+     * JWT callback.
+     *
+     * The JWT stores:
+     *
+     * - authenticated user's ID
+     * - currently selected workspace ID
+     */
+    async jwt({
+      token,
+      user,
+      trigger,
+      session,
+    }) {
+      /*
+       * Initial sign-in.
+       *
+       * Store the authenticated user's ID
+       * inside the JWT.
+       */
+
       if (user) {
         token.id = user.id;
+      }
+
+      /*
+       * Workspace switching.
+       *
+       * The client calls:
+       *
+       * update({
+       *   activeOrganizationId: organizationId
+       * })
+       *
+       * after the switch API has verified that the
+       * authenticated user belongs to that organization.
+       */
+
+      if (
+        trigger === "update" &&
+        session?.activeOrganizationId
+      ) {
+        token.activeOrganizationId =
+          session.activeOrganizationId;
       }
 
       return token;
     },
 
-    async session({ session, token }) {
-      if (session.user && token.id) {
-        session.user.id = token.id as string;
+    /**
+     * Session callback.
+     *
+     * Exposes the authenticated user's ID and
+     * active workspace ID to the application.
+     */
+    async session({
+      session,
+      token,
+    }) {
+      /*
+       * Add user ID to the session.
+       */
+
+      if (
+        session.user &&
+        token.id
+      ) {
+        session.user.id =
+          token.id as string;
+      }
+
+      /*
+       * Add active workspace to the session.
+       */
+
+      if (
+        token.activeOrganizationId
+      ) {
+        session.activeOrganizationId =
+          token.activeOrganizationId as string;
       }
 
       return session;
     },
   },
 
+  /*
+   * ---------------------------------------------------------
+   * AUTH SECRET
+   * ---------------------------------------------------------
+   */
+
   secret:
     process.env.AUTH_SECRET ||
     process.env.NEXTAUTH_SECRET,
+
+  /*
+   * ---------------------------------------------------------
+   * CUSTOM SIGN-IN PAGE
+   * ---------------------------------------------------------
+   */
 
   pages: {
     signIn: "/signin",
