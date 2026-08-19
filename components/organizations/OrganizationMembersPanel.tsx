@@ -282,7 +282,7 @@ export default function OrganizationMembersPanel({
    * - Resend invitations
    * - Cancel invitations
    *
-   * Invited members will eventually:
+   * Invited members will:
    *
    * - Receive an in-app notification
    * - Accept invitations
@@ -302,7 +302,6 @@ export default function OrganizationMembersPanel({
 
   const loadMembers = useCallback(async () => {
     if (!organization?.id) {
-      setMembers([]);
       return;
     }
 
@@ -364,7 +363,6 @@ export default function OrganizationMembersPanel({
       requestedStatus = invitationStatusFilter
     ) => {
       if (!organization?.id) {
-        setInvitations([]);
         return;
       }
 
@@ -459,30 +457,42 @@ export default function OrganizationMembersPanel({
    */
 
   useEffect(() => {
-    if (!organization?.id) {
-      return;
-    }
+    const timer = setTimeout(() => {
+      if (!organization?.id) {
+        return;
+      }
 
-    loadMembers();
+      void loadMembers();
+    }, 0);
+
+    return () => clearTimeout(timer);
   }, [organization?.id, loadMembers]);
 
   useEffect(() => {
-    if (!organization?.id) {
-      return;
-    }
+    const timer = setTimeout(() => {
+      if (!organization?.id) {
+        return;
+      }
 
-    setInvitationPage(1);
+      setInvitationPage(1);
+    }, 0);
+
+    return () => clearTimeout(timer);
   }, [organization?.id]);
 
   useEffect(() => {
-    if (!organization?.id) {
-      return;
-    }
+    const timer = setTimeout(() => {
+      if (!organization?.id) {
+        return;
+      }
 
-    loadInvitations(
-      invitationPage,
-      invitationStatusFilter
-    );
+      void loadInvitations(
+        invitationPage,
+        invitationStatusFilter
+      );
+    }, 0);
+
+    return () => clearTimeout(timer);
   }, [
     organization?.id,
     invitationPage,
@@ -593,10 +603,6 @@ export default function OrganizationMembersPanel({
       setSuccessMessage(
         `Invitation sent to ${email}.`
       );
-
-      /*
-       * Refresh invitations immediately.
-       */
 
       setInvitationPage(1);
 
@@ -1155,8 +1161,6 @@ export default function OrganizationMembersPanel({
               </div>
 
               <div className="flex items-center gap-2">
-                {/* SECOND SEND INVITATION BUTTON */}
-
                 {canManageInvitations && (
                   <button
                     type="button"
@@ -1276,16 +1280,6 @@ export default function OrganizationMembersPanel({
                       isInvitationExpired(
                         invitation
                       );
-
-                    /*
-                     * Only the workspace admin/owner
-                     * can take action on pending
-                     * invitations.
-                     *
-                     * Invited users will receive
-                     * accept/decline controls
-                     * through notifications later.
-                     */
 
                     const isPending =
                       invitation.status ===
@@ -1710,4 +1704,3 @@ export default function OrganizationMembersPanel({
     </>
   );
 }
-
