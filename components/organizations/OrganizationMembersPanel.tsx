@@ -15,7 +15,6 @@ import {
 import {
   useCallback,
   useEffect,
-  useMemo,
   useState,
 } from "react";
 
@@ -197,6 +196,19 @@ export default function OrganizationMembersPanel({
 }: OrganizationMembersPanelProps) {
   /*
    * -------------------------------------------------------
+   * ORGANIZATION ID
+   * -------------------------------------------------------
+   *
+   * Keep the primitive ID separate from the organization
+   * object so React Compiler can correctly preserve
+   * callback memoization.
+   */
+
+  const organizationId =
+    organization?.id ?? null;
+
+  /*
+   * -------------------------------------------------------
    * MEMBERS STATE
    * -------------------------------------------------------
    */
@@ -226,8 +238,12 @@ export default function OrganizationMembersPanel({
   const [invitationsError, setInvitationsError] =
     useState<string | null>(null);
 
-  const [invitationStatusFilter, setInvitationStatusFilter] =
-    useState<InvitationStatus | "all">("pending");
+  const [
+    invitationStatusFilter,
+    setInvitationStatusFilter,
+  ] = useState<InvitationStatus | "all">(
+    "pending"
+  );
 
   const [invitationPage, setInvitationPage] =
     useState(1);
@@ -235,8 +251,10 @@ export default function OrganizationMembersPanel({
   const [invitationTotal, setInvitationTotal] =
     useState(0);
 
-  const [invitationTotalPages, setInvitationTotalPages] =
-    useState(1);
+  const [
+    invitationTotalPages,
+    setInvitationTotalPages,
+  ] = useState(1);
 
   /*
    * -------------------------------------------------------
@@ -265,8 +283,10 @@ export default function OrganizationMembersPanel({
    * -------------------------------------------------------
    */
 
-  const [actionInvitationId, setActionInvitationId] =
-    useState<string | null>(null);
+  const [
+    actionInvitationId,
+    setActionInvitationId,
+  ] = useState<string | null>(null);
 
   const [successMessage, setSuccessMessage] =
     useState<string | null>(null);
@@ -282,12 +302,10 @@ export default function OrganizationMembersPanel({
    * - Resend invitations
    * - Cancel invitations
    *
-   * Invited members will:
+   * Invited members receive notifications and can:
    *
-   * - Receive an in-app notification
    * - Accept invitations
    * - Decline invitations
-   *
    */
 
   const canManageInvitations =
@@ -301,7 +319,8 @@ export default function OrganizationMembersPanel({
    */
 
   const loadMembers = useCallback(async () => {
-    if (!organization?.id) {
+    if (!organizationId) {
+      setMembers([]);
       return;
     }
 
@@ -310,7 +329,7 @@ export default function OrganizationMembersPanel({
       setMembersError(null);
 
       const response = await fetch(
-        `/api/organizations/${organization.id}/members`,
+        `/api/organizations/${organizationId}/members`,
         {
           method: "GET",
           headers: {
@@ -349,7 +368,7 @@ export default function OrganizationMembersPanel({
     } finally {
       setMembersLoading(false);
     }
-  }, [organization?.id]);
+  }, [organizationId]);
 
   /*
    * -------------------------------------------------------
@@ -359,10 +378,13 @@ export default function OrganizationMembersPanel({
 
   const loadInvitations = useCallback(
     async (
-      requestedPage = invitationPage,
-      requestedStatus = invitationStatusFilter
+      requestedPage: number,
+      requestedStatus:
+        | InvitationStatus
+        | "all"
     ) => {
-      if (!organization?.id) {
+      if (!organizationId) {
+        setInvitations([]);
         return;
       }
 
@@ -390,7 +412,7 @@ export default function OrganizationMembersPanel({
         }
 
         const response = await fetch(
-          `/api/organizations/${organization.id}/invitations?${params.toString()}`,
+          `/api/organizations/${organizationId}/invitations?${params.toString()}`,
           {
             method: "GET",
             headers: {
@@ -443,46 +465,57 @@ export default function OrganizationMembersPanel({
         setInvitationsLoading(false);
       }
     },
-    [
-      organization?.id,
-      invitationPage,
-      invitationStatusFilter,
-    ]
+    [organizationId]
   );
 
   /*
    * -------------------------------------------------------
-   * INITIAL DATA LOAD
+   * INITIAL MEMBERS LOAD
    * -------------------------------------------------------
    */
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!organization?.id) {
+    const timeout = setTimeout(() => {
+      if (!organizationId) {
+        setMembers([]);
         return;
       }
 
       void loadMembers();
     }, 0);
 
-    return () => clearTimeout(timer);
-  }, [organization?.id, loadMembers]);
+    return () => clearTimeout(timeout);
+  }, [organizationId, loadMembers]);
+
+  /*
+   * -------------------------------------------------------
+   * RESET INVITATION PAGE WHEN WORKSPACE CHANGES
+   * -------------------------------------------------------
+   */
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!organization?.id) {
+    const timeout = setTimeout(() => {
+      if (!organizationId) {
         return;
       }
 
       setInvitationPage(1);
     }, 0);
 
-    return () => clearTimeout(timer);
-  }, [organization?.id]);
+    return () => clearTimeout(timeout);
+  }, [organizationId]);
+
+  /*
+   * -------------------------------------------------------
+   * LOAD INVITATIONS
+   * -------------------------------------------------------
+   */
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (!organization?.id) {
+    const timeout = setTimeout(() => {
+      if (!organizationId) {
+        setInvitations([]);
+        setInvitationsError(null);
         return;
       }
 
@@ -492,9 +525,9 @@ export default function OrganizationMembersPanel({
       );
     }, 0);
 
-    return () => clearTimeout(timer);
+    return () => clearTimeout(timeout);
   }, [
-    organization?.id,
+    organizationId,
     invitationPage,
     invitationStatusFilter,
     loadInvitations,
@@ -559,7 +592,7 @@ export default function OrganizationMembersPanel({
       return;
     }
 
-    if (!organization?.id) {
+    if (!organizationId) {
       setInviteError(
         "No workspace is currently selected."
       );
@@ -573,7 +606,7 @@ export default function OrganizationMembersPanel({
       setSuccessMessage(null);
 
       const response = await fetch(
-        `/api/organizations/${organization.id}/invitations`,
+        `/api/organizations/${organizationId}/invitations`,
         {
           method: "POST",
           headers: {
@@ -636,7 +669,7 @@ export default function OrganizationMembersPanel({
     invitation: Invitation
   ) {
     if (
-      !organization?.id ||
+      !organizationId ||
       !canManageInvitations
     ) {
       return;
@@ -651,7 +684,7 @@ export default function OrganizationMembersPanel({
       setInvitationsError(null);
 
       const response = await fetch(
-        `/api/organizations/${organization.id}/invitations/${invitation.id}/resend`,
+        `/api/organizations/${organizationId}/invitations/${invitation.id}/resend`,
         {
           method: "POST",
           headers: {
@@ -703,16 +736,15 @@ export default function OrganizationMembersPanel({
     invitation: Invitation
   ) {
     if (
-      !organization?.id ||
+      !organizationId ||
       !canManageInvitations
     ) {
       return;
     }
 
-    const confirmed =
-      window.confirm(
-        `Cancel the invitation sent to ${invitation.email}?`
-      );
+    const confirmed = window.confirm(
+      `Cancel the invitation sent to ${invitation.email}?`
+    );
 
     if (!confirmed) {
       return;
@@ -727,7 +759,7 @@ export default function OrganizationMembersPanel({
       setInvitationsError(null);
 
       const response = await fetch(
-        `/api/organizations/${organization.id}/invitations/${invitation.id}`,
+        `/api/organizations/${organizationId}/invitations/${invitation.id}`,
         {
           method: "DELETE",
           headers: {
@@ -776,7 +808,9 @@ export default function OrganizationMembersPanel({
    */
 
   function handleInvitationStatusChange(
-    status: InvitationStatus | "all"
+    status:
+      | InvitationStatus
+      | "all"
   ) {
     setInvitationStatusFilter(status);
     setInvitationPage(1);
@@ -804,14 +838,11 @@ export default function OrganizationMembersPanel({
    * -------------------------------------------------------
    */
 
-  const activeMemberCount = useMemo(
-    () =>
-      members.filter(
-        (member) =>
-          member.status === "active"
-      ).length,
-    [members]
-  );
+  const activeMemberCount =
+    members.filter(
+      (member) =>
+        member.status === "active"
+    ).length;
 
   const pendingInvitationCount =
     invitationStatusFilter === "pending"
@@ -863,7 +894,7 @@ export default function OrganizationMembersPanel({
 
               <div>
                 <h2 className="text-lg font-semibold text-slate-900">
-                  Members & Invitations
+                  Members &amp; Invitations
                 </h2>
 
                 <p className="text-sm text-slate-500">
@@ -895,8 +926,6 @@ export default function OrganizationMembersPanel({
 
               Refresh
             </button>
-
-            {/* SEND INVITATION BUTTON */}
 
             {canManageInvitations && (
               <button
@@ -1073,9 +1102,7 @@ export default function OrganizationMembersPanel({
                       <div className="flex min-w-0 items-center gap-3">
                         {member.image ? (
                           <img
-                            src={
-                              member.image
-                            }
+                            src={member.image}
                             alt=""
                             className="h-10 w-10 rounded-full object-cover"
                           />
@@ -1381,8 +1408,6 @@ export default function OrganizationMembersPanel({
                                 : invitation.status}
                             </span>
 
-                            {/* ADMIN ACTIONS */}
-
                             {canManageInvitations &&
                               isPending && (
                                 <>
@@ -1505,9 +1530,7 @@ export default function OrganizationMembersPanel({
         </div>
       </section>
 
-      {/* ---------------------------------------------------
-          INVITE MEMBER MODAL
-      --------------------------------------------------- */}
+      {/* INVITE MEMBER MODAL */}
 
       {inviteModalOpen &&
         canManageInvitations && (
@@ -1586,8 +1609,7 @@ export default function OrganizationMembersPanel({
                     <p className="mt-1.5 text-xs text-slate-400">
                       The invitation will
                       appear in the invited
-                      user's LYNOS
-                      notifications.
+                      user notifications.
                     </p>
                   </div>
 
@@ -1670,8 +1692,6 @@ export default function OrganizationMembersPanel({
                   >
                     Cancel
                   </button>
-
-                  {/* ACTUAL SEND INVITATION ACTION */}
 
                   <button
                     type="submit"
