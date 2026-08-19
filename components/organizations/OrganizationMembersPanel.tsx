@@ -12,11 +12,7 @@ import {
   Users,
   X,
 } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
+import { useCallback, useEffect, useState } from "react";
 
 interface Organization {
   id: string;
@@ -26,22 +22,14 @@ interface Organization {
   ownerId: string;
   status: "active" | "archived";
   role: "owner" | "admin" | "member" | null;
-  membershipStatus:
-    | "active"
-    | "suspended"
-    | null;
+  membershipStatus: "active" | "suspended" | null;
   createdAt: string;
   updatedAt: string;
 }
 
-type MemberRole =
-  | "owner"
-  | "admin"
-  | "member";
+type MemberRole = "owner" | "admin" | "member";
 
-type InvitationRole =
-  | "admin"
-  | "member";
+type InvitationRole = "admin" | "member";
 
 type InvitationStatus =
   | "pending"
@@ -55,10 +43,7 @@ interface OrganizationMember {
   organizationId: string;
   userId: string;
   role: MemberRole;
-  status:
-    | "active"
-    | "suspended"
-    | "removed";
+  status: "active" | "suspended" | "removed";
   name?: string | null;
   email?: string | null;
   image?: string | null;
@@ -196,12 +181,8 @@ export default function OrganizationMembersPanel({
 }: OrganizationMembersPanelProps) {
   /*
    * -------------------------------------------------------
-   * ORGANIZATION ID
+   * ORGANIZATION
    * -------------------------------------------------------
-   *
-   * Keep the primitive ID separate from the organization
-   * object so React Compiler can correctly preserve
-   * callback memoization.
    */
 
   const organizationId =
@@ -295,17 +276,6 @@ export default function OrganizationMembersPanel({
    * -------------------------------------------------------
    * PERMISSIONS
    * -------------------------------------------------------
-   *
-   * Only workspace owners and admins can:
-   *
-   * - Send invitations
-   * - Resend invitations
-   * - Cancel invitations
-   *
-   * Invited members receive notifications and can:
-   *
-   * - Accept invitations
-   * - Decline invitations
    */
 
   const canManageInvitations =
@@ -316,6 +286,12 @@ export default function OrganizationMembersPanel({
    * -------------------------------------------------------
    * LOAD MEMBERS
    * -------------------------------------------------------
+   *
+   * React Compiler can infer the whole organization object
+   * because organizationId is derived from it.
+   *
+   * Therefore organization is intentionally used as the
+   * dependency here instead of organizationId.
    */
 
   const loadMembers = useCallback(async () => {
@@ -368,7 +344,7 @@ export default function OrganizationMembersPanel({
     } finally {
       setMembersLoading(false);
     }
-  }, [organizationId]);
+  }, [organization, organizationId]);
 
   /*
    * -------------------------------------------------------
@@ -385,6 +361,8 @@ export default function OrganizationMembersPanel({
     ) => {
       if (!organizationId) {
         setInvitations([]);
+        setInvitationTotal(0);
+        setInvitationTotalPages(1);
         return;
       }
 
@@ -465,7 +443,10 @@ export default function OrganizationMembersPanel({
         setInvitationsLoading(false);
       }
     },
-    [organizationId]
+    [
+      organization,
+      organizationId,
+    ]
   );
 
   /*
@@ -475,16 +456,13 @@ export default function OrganizationMembersPanel({
    */
 
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      if (!organizationId) {
-        setMembers([]);
-        return;
-      }
+    if (!organizationId) {
+      setMembers([]);
+      setMembersError(null);
+      return;
+    }
 
-      void loadMembers();
-    }, 0);
-
-    return () => clearTimeout(timeout);
+    void loadMembers();
   }, [organizationId, loadMembers]);
 
   /*
@@ -494,15 +472,14 @@ export default function OrganizationMembersPanel({
    */
 
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      if (!organizationId) {
-        return;
-      }
-
+    if (!organizationId) {
       setInvitationPage(1);
-    }, 0);
+      setInvitations([]);
+      setInvitationsError(null);
+      return;
+    }
 
-    return () => clearTimeout(timeout);
+    setInvitationPage(1);
   }, [organizationId]);
 
   /*
@@ -512,20 +489,18 @@ export default function OrganizationMembersPanel({
    */
 
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      if (!organizationId) {
-        setInvitations([]);
-        setInvitationsError(null);
-        return;
-      }
+    if (!organizationId) {
+      setInvitations([]);
+      setInvitationsError(null);
+      setInvitationTotal(0);
+      setInvitationTotalPages(1);
+      return;
+    }
 
-      void loadInvitations(
-        invitationPage,
-        invitationStatusFilter
-      );
-    }, 0);
-
-    return () => clearTimeout(timeout);
+    void loadInvitations(
+      invitationPage,
+      invitationStatusFilter
+    );
   }, [
     organizationId,
     invitationPage,
@@ -588,7 +563,6 @@ export default function OrganizationMembersPanel({
       setInviteError(
         "Please enter an email address."
       );
-
       return;
     }
 
@@ -596,7 +570,6 @@ export default function OrganizationMembersPanel({
       setInviteError(
         "No workspace is currently selected."
       );
-
       return;
     }
 
@@ -934,7 +907,6 @@ export default function OrganizationMembersPanel({
                 className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 active:scale-[0.98]"
               >
                 <UserPlus className="h-4 w-4" />
-
                 Send invitation
               </button>
             )}
@@ -1101,10 +1073,17 @@ export default function OrganizationMembersPanel({
                     >
                       <div className="flex min-w-0 items-center gap-3">
                         {member.image ? (
+                          /*
+                           * The image URL can come from an external
+                           * provider. Keep the native image element
+                           * to avoid requiring next.config.js
+                           * remotePatterns configuration.
+                           */
+                          // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={member.image}
                             alt=""
-                            className="h-10 w-10 rounded-full object-cover"
+                            className="h-10 w-10 shrink-0 rounded-full object-cover"
                           />
                         ) : (
                           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-sm font-bold text-indigo-600">
@@ -1195,7 +1174,6 @@ export default function OrganizationMembersPanel({
                     className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-indigo-700"
                   >
                     <UserPlus className="h-3.5 w-3.5" />
-
                     Send invitation
                   </button>
                 )}
@@ -1293,7 +1271,6 @@ export default function OrganizationMembersPanel({
                     className="mt-4 inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
                   >
                     <UserPlus className="h-3.5 w-3.5" />
-
                     Send invitation
                   </button>
                 )}
@@ -1430,7 +1407,6 @@ export default function OrganizationMembersPanel({
                                           : ""
                                       }`}
                                     />
-
                                     Resend
                                   </button>
 
@@ -1447,7 +1423,6 @@ export default function OrganizationMembersPanel({
                                     className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
                                   >
                                     <X className="h-3.5 w-3.5" />
-
                                     Cancel
                                   </button>
                                 </>
@@ -1705,13 +1680,11 @@ export default function OrganizationMembersPanel({
                     {inviting ? (
                       <>
                         <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
-
                         Sending...
                       </>
                     ) : (
                       <>
                         <UserPlus className="h-4 w-4" />
-
                         Send invitation
                       </>
                     )}
