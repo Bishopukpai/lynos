@@ -344,7 +344,7 @@ export default function OrganizationMembersPanel({
     } finally {
       setMembersLoading(false);
     }
-  }, [organization, organizationId]);
+  }, [organizationId]);
 
   /*
    * -------------------------------------------------------
@@ -444,7 +444,6 @@ export default function OrganizationMembersPanel({
       }
     },
     [
-      organization,
       organizationId,
     ]
   );
@@ -455,15 +454,31 @@ export default function OrganizationMembersPanel({
    * -------------------------------------------------------
    */
 
-  useEffect(() => {
-    if (!organizationId) {
-      setMembers([]);
-      setMembersError(null);
-      return;
-    }
+// 1. Invitations fetch effect
+// 1. Updated loadInvitations effect
+useEffect(() => {
+  if (!organizationId) {
+    queueMicrotask(() => {
+      setInvitations([]);
+      setInvitationsError(null);
+      setInvitationTotal(0);
+      setInvitationTotalPages(1);
+    });
+    return;
+  }
 
-    void loadMembers();
-  }, [organizationId, loadMembers]);
+  queueMicrotask(() => {
+    void loadInvitations(
+      invitationPage,
+      invitationStatusFilter
+    );
+  });
+}, [
+  organizationId,
+  invitationPage,
+  invitationStatusFilter,
+  loadInvitations,
+]);
 
   /*
    * -------------------------------------------------------
@@ -471,42 +486,42 @@ export default function OrganizationMembersPanel({
    * -------------------------------------------------------
    */
 
-  useEffect(() => {
-    if (!organizationId) {
-      setInvitationPage(1);
-      setInvitations([]);
-      setInvitationsError(null);
-      return;
-    }
+ // 2. Members fetch effect
+// 2. Updated loadMembers effect
+useEffect(() => {
+  if (!organizationId) {
+    queueMicrotask(() => {
+      setMembers([]);
+      setMembersError(null);
+    });
+    return;
+  }
 
-    setInvitationPage(1);
-  }, [organizationId]);
-
+  queueMicrotask(() => {
+    void loadMembers();
+  });
+}, [organizationId, loadMembers]);
   /*
    * -------------------------------------------------------
    * LOAD INVITATIONS
    * -------------------------------------------------------
    */
 
-  useEffect(() => {
-    if (!organizationId) {
+  // 3. Invitation page reset effect
+useEffect(() => {
+  if (!organizationId) {
+    queueMicrotask(() => {
+      setInvitationPage(1);
       setInvitations([]);
       setInvitationsError(null);
-      setInvitationTotal(0);
-      setInvitationTotalPages(1);
-      return;
-    }
+    });
+    return;
+  }
 
-    void loadInvitations(
-      invitationPage,
-      invitationStatusFilter
-    );
-  }, [
-    organizationId,
-    invitationPage,
-    invitationStatusFilter,
-    loadInvitations,
-  ]);
+  queueMicrotask(() => {
+    setInvitationPage(1);
+  });
+}, [organizationId]);
 
   /*
    * -------------------------------------------------------

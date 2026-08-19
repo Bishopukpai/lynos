@@ -140,10 +140,10 @@ export default function DashboardPage() {
    * -------------------------------------------------------
    */
 
-  const [notificationsOpen, setNotificationsOpen] =
-  useState(false);
+  const [_notificationsOpen, _setNotificationsOpen] = useState(false);
 
-  const notificationRef = useRef<HTMLDivElement | null>(null);
+
+  const [_notificationRef] = useState<HTMLDivElement | null>(null);
   const [organizations, setOrganizations] = useState<
     Organization[]
   >([]);
@@ -378,8 +378,10 @@ export default function DashboardPage() {
   }
 
   useEffect(() => {
+  queueMicrotask(() => {
     loadOrganizations();
-  }, []);
+  });
+}, []);
 
   /*
    * -------------------------------------------------------
@@ -446,8 +448,10 @@ export default function DashboardPage() {
    */
 
   useEffect(() => {
+  queueMicrotask(() => {
     loadNotifications();
-  }, []);
+  });
+}, []);
 
   /*
    * -------------------------------------------------------
@@ -806,24 +810,19 @@ export default function DashboardPage() {
    * -------------------------------------------------------
    */
 
-  useEffect(() => {
-    if (
-      !selectedOrganizationId ||
-      !canManageInvitations
-    ) {
+useEffect(() => {
+  if (!selectedOrganizationId || !canManageInvitations) {
+    queueMicrotask(() => {
       setInvitations([]);
       setInvitationsError(null);
-      return;
-    }
+    });
+    return;
+  }
 
-    loadInvitations(
-      selectedOrganizationId
-    );
-  }, [
-    selectedOrganizationId,
-    canManageInvitations,
-  ]);
-
+  queueMicrotask(() => {
+    loadInvitations(selectedOrganizationId);
+  });
+}, [selectedOrganizationId, canManageInvitations]);
   /*
    * -------------------------------------------------------
    * SWITCH WORKSPACE
@@ -1677,11 +1676,11 @@ export default function DashboardPage() {
               </div>
 
               <h3 className="mt-3 text-sm font-semibold text-slate-800">
-                You're all caught up
+                You &apos;re all caught up
               </h3>
 
               <p className="mt-1 text-xs text-slate-500">
-                You don't have any notifications right now.
+                You don&apos;t have any notifications right now.
               </p>
             </div>
           ) : (
@@ -1866,7 +1865,7 @@ export default function DashboardPage() {
 
               <p className="mt-1 text-sm text-slate-500">
                 {selectedOrganization
-                  ? `Here's what's happening across ${selectedOrganization.name}.`
+                  ? `Here&apos;s what&apos;s happening across ${selectedOrganization.name}.`
                   : "Create a workspace to start managing your work."}
               </p>
             </div>
