@@ -4,13 +4,26 @@ import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/lib/auth";
 import { createProjectSchema } from "@/lib/validation/project";
+
 import {
   getProjectsCollection,
   ensureProjectIndexes,
   type Project,
 } from "../../../models/projects";
-import { getOrganizationsCollection } from "../../../models/organization";
-import { getOrganizationMembersCollection } from "../../../models/organizationMember";
+
+import {
+  getOrganizationsCollection,
+} from "../../../models/organization";
+
+import {
+  getOrganizationMembersCollection,
+} from "../../../models/organizationMember";
+
+import {
+  ensureProjectMemberIndexes,
+  getProjectMembersCollection,
+  type ProjectMember,
+} from "../../../models/ProjectMember";
 
 /**
  * POST /api/projects
@@ -19,13 +32,21 @@ import { getOrganizationMembersCollection } from "../../../models/organizationMe
  *
  * Only organization owners and admins
  * can create projects.
+ *
+ * The authenticated user who creates the project
+ * is automatically assigned as the first project admin.
  */
 export async function POST(request: Request) {
   try {
-    // 1. Authenticate the user
+    /*
+     * 1. Authenticate the user.
+     */
     const session = await getServerSession(authOptions);
 
-    if (!session?.user?.id || !ObjectId.isValid(session.user.id)) {
+    if (
+      !session?.user?.id ||
+      !ObjectId.isValid(session.user.id)
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -35,7 +56,20 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Read request body safely
+    /*
+     * The authenticated session user is the
+     * authoritative project creator.
+     *
+     * This ID must be used for both:
+     *
+     * - project.createdBy
+     * - project_members.userId
+     */
+    const userId = new ObjectId(session.user.id);
+
+    /*
+     * 2. Read request body safely.
+     */
     let body: unknown;
 
     try {
@@ -50,7 +84,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Validate request body with Zod
+    /*
+     * 3. Validate request body.
+     */
     const parsed = createProjectSchema.safeParse(body);
 
     if (!parsed.success) {
@@ -73,28 +109,67 @@ export async function POST(request: Request) {
       organizationId,
     } = parsed.data;
 
-    // 4. Convert IDs to MongoDB ObjectIds
-    const userId = new ObjectId(session.user.id);
+    /*
+     * 4. Validate organization ID.
+     */
+    if (!ObjectId.isValid(organizationId)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid organizationId",
+        },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * 5. Convert organization ID.
+     */
     const orgId = new ObjectId(organizationId);
 
-    // 5. Get existing MongoDB collections
-    const organizations = await getOrganizationsCollection();
-    const members = await getOrganizationMembersCollection();
+    /*
+     * 6. Get required collections.
+     */
+    const organizations =
+      await getOrganizationsCollection();
 
-    // 6. Query organization and membership in parallel
-    const [organization, membership] = await Promise.all([
-      organizations.findOne({
-        _id: orgId,
-      }),
+    const organizationMembers =
+      await getOrganizationMembersCollection();
 
-      members.findOne({
-        organizationId: orgId,
-        userId,
-        status: "active",
-      }),
+    const projects =
+      await getProjectsCollection();
+
+    const projectMembers =
+      await getProjectMembersCollection();
+
+    /*
+     * 7. Ensure required indexes exist.
+     */
+    await Promise.all([
+      ensureProjectIndexes(),
+      ensureProjectMemberIndexes(),
     ]);
 
-    // 7. Verify organization exists
+    /*
+     * 8. Find the organization and the
+     * authenticated user's organization membership.
+     */
+    const [organization, membership] =
+      await Promise.all([
+        organizations.findOne({
+          _id: orgId,
+        }),
+
+        organizationMembers.findOne({
+          organizationId: orgId,
+          userId,
+          status: "active",
+        }),
+      ]);
+
+    /*
+     * 9. Verify organization exists.
+     */
     if (!organization) {
       return NextResponse.json(
         {
@@ -105,29 +180,39 @@ export async function POST(request: Request) {
       );
     }
 
-    // 8. Verify organization is active
+    /*
+     * 10. Verify organization is active.
+     */
     if (organization.status !== "active") {
       return NextResponse.json(
         {
           success: false,
-          error: "Cannot create a project in an archived organization",
+          error:
+            "Cannot create a project in an archived organization",
         },
         { status: 403 }
       );
     }
 
-    // 9. Verify active membership
+    /*
+     * 11. Verify the authenticated user
+     * is an active member of the organization.
+     */
     if (!membership) {
       return NextResponse.json(
         {
           success: false,
-          error: "You are not an active member of this organization",
+          error:
+            "You are not an active member of this organization",
         },
         { status: 403 }
       );
     }
 
-    // 10. Verify required organization role
+    /*
+     * 12. Only organization owners and admins
+     * can create projects.
+     */
     if (
       membership.role !== "owner" &&
       membership.role !== "admin"
@@ -136,19 +221,22 @@ export async function POST(request: Request) {
         {
           success: false,
           error:
-            "Forbidden: You must be an admin or owner to create projects",
+            "Forbidden: You must be an admin or owner to create a project",
         },
         { status: 403 }
       );
     }
 
-    // 11. Get projects collection
-    const projects = await getProjectsCollection();
-
-    // 12. Ensure project indexes exist
-    await ensureProjectIndexes();
-
-    // 13. Create the project
+    /*
+     * 13. Create project data.
+     *
+     * IMPORTANT:
+     *
+     * createdBy comes ONLY from the authenticated
+     * session user.
+     *
+     * It does not come from the request body.
+     */
     const now = new Date();
 
     const project: Project = {
@@ -159,32 +247,157 @@ export async function POST(request: Request) {
       budget,
       targetAudience,
 
-      // Server-controlled fields
       productionStatus: "IDEA",
+
       createdBy: userId,
 
       createdAt: now,
       updatedAt: now,
     };
 
-    const result = await projects.insertOne(project);
+    /*
+     * 14. Insert the project.
+     */
+    const projectResult =
+      await projects.insertOne(project);
 
-    // 14. Build the created project response
-    const createdProject: Project & { _id: ObjectId } = {
-      _id: result.insertedId,
+    const projectId =
+      projectResult.insertedId;
+
+    /*
+     * 15. Create the project creator's
+     * project membership.
+     *
+     * The creator MUST become the first
+     * project admin.
+     */
+    const creatorProjectMember: ProjectMember = {
+      projectId,
+      organizationId: orgId,
+      userId,
+      role: "admin",
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    try {
+      /*
+       * Insert the creator as project admin.
+       */
+      await projectMembers.insertOne(
+        creatorProjectMember
+      );
+
+      /*
+       * 16. Verify that the creator membership
+       * was actually created.
+       *
+       * We explicitly search using:
+       *
+       * projectId
+       * organizationId
+       * userId
+       * role: admin
+       */
+      const verifiedCreatorMembership =
+        await projectMembers.findOne({
+          projectId,
+          organizationId: orgId,
+          userId,
+          role: "admin",
+        });
+
+      if (!verifiedCreatorMembership) {
+        /*
+         * Something went wrong.
+         *
+         * Remove any project memberships belonging
+         * to this newly created project.
+         */
+        await projectMembers.deleteMany({
+          projectId,
+        });
+
+        /*
+         * Remove the project as well.
+         */
+        await projects.deleteOne({
+          _id: projectId,
+        });
+
+        return NextResponse.json(
+          {
+            success: false,
+            error:
+              "Project was created but the project creator could not be assigned as an admin.",
+          },
+          { status: 500 }
+        );
+      }
+    } catch (error) {
+      /*
+       * If creating the project membership fails,
+       * remove the project so we don't leave an
+       * orphan project without an administrator.
+       */
+      await projects.deleteOne({
+        _id: projectId,
+      });
+
+      throw error;
+    }
+
+    /*
+     * 17. Build the created project response.
+     */
+    const createdProject: Project & {
+      _id: ObjectId;
+    } = {
+      _id: projectId,
       ...project,
     };
 
-    // 15. Return the created project
+    /*
+     * 18. Return the created project.
+     */
     return NextResponse.json(
       {
         success: true,
+
         project: createdProject,
+
+        /*
+         * Explicit information about the
+         * automatically created project admin.
+         */
+        projectAdmin: {
+          projectId: projectId.toString(),
+
+          organizationId: orgId.toString(),
+
+          /*
+           * This MUST equal session.user.id.
+           */
+          userId: userId.toString(),
+
+          role: "admin",
+        },
+
+        /*
+         * Explicitly expose the creator.
+         *
+         * This is useful for verifying the
+         * frontend receives the correct user.
+         */
+        createdBy: userId.toString(),
       },
       { status: 201 }
     );
   } catch (error) {
-    console.error("Create project error:", error);
+    console.error(
+      "Create project error:",
+      error
+    );
 
     return NextResponse.json(
       {
@@ -205,10 +418,15 @@ export async function POST(request: Request) {
  */
 export async function GET(request: Request) {
   try {
-    // 1. Authenticate the user
+    /*
+     * 1. Authenticate the user.
+     */
     const session = await getServerSession(authOptions);
 
-    if (!session?.user?.id || !ObjectId.isValid(session.user.id)) {
+    if (
+      !session?.user?.id ||
+      !ObjectId.isValid(session.user.id)
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -218,10 +436,14 @@ export async function GET(request: Request) {
       );
     }
 
-    // 2. Get organizationId from query string
-    const { searchParams } = new URL(request.url);
+    /*
+     * 2. Get organizationId from query string.
+     */
+    const { searchParams } =
+      new URL(request.url);
 
-    const organizationId = searchParams.get("organizationId");
+    const organizationId =
+      searchParams.get("organizationId");
 
     if (!organizationId) {
       return NextResponse.json(
@@ -233,7 +455,9 @@ export async function GET(request: Request) {
       );
     }
 
-    // 3. Validate organizationId
+    /*
+     * 3. Validate organizationId.
+     */
     if (!ObjectId.isValid(organizationId)) {
       return NextResponse.json(
         {
@@ -244,28 +468,44 @@ export async function GET(request: Request) {
       );
     }
 
-    // 4. Convert IDs to MongoDB ObjectIds
-    const userId = new ObjectId(session.user.id);
-    const orgId = new ObjectId(organizationId);
+    /*
+     * 4. Convert IDs.
+     */
+    const userId =
+      new ObjectId(session.user.id);
 
-    // 5. Get existing MongoDB collections
-    const organizations = await getOrganizationsCollection();
-    const members = await getOrganizationMembersCollection();
+    const orgId =
+      new ObjectId(organizationId);
 
-    // 6. Verify organization and membership in parallel
-    const [organization, membership] = await Promise.all([
-      organizations.findOne({
-        _id: orgId,
-      }),
+    /*
+     * 5. Get collections.
+     */
+    const organizations =
+      await getOrganizationsCollection();
 
-      members.findOne({
-        organizationId: orgId,
-        userId,
-        status: "active",
-      }),
-    ]);
+    const organizationMembers =
+      await getOrganizationMembersCollection();
 
-    // 7. Verify organization exists
+    /*
+     * 6. Verify organization and membership
+     * in parallel.
+     */
+    const [organization, membership] =
+      await Promise.all([
+        organizations.findOne({
+          _id: orgId,
+        }),
+
+        organizationMembers.findOne({
+          organizationId: orgId,
+          userId,
+          status: "active",
+        }),
+      ]);
+
+    /*
+     * 7. Verify organization exists.
+     */
     if (!organization) {
       return NextResponse.json(
         {
@@ -276,42 +516,57 @@ export async function GET(request: Request) {
       );
     }
 
-    // 8. Verify organization is active
+    /*
+     * 8. Verify organization is active.
+     */
     if (organization.status !== "active") {
       return NextResponse.json(
         {
           success: false,
-          error: "Cannot access projects from an archived organization",
+          error:
+            "Cannot access projects from an archived organization",
         },
         { status: 403 }
       );
     }
 
-    // 9. Verify active membership
+    /*
+     * 9. Verify active membership.
+     */
     if (!membership) {
       return NextResponse.json(
         {
           success: false,
-          error: "You are not an active member of this organization",
+          error:
+            "You are not an active member of this organization",
         },
         { status: 403 }
       );
     }
 
-    // 10. Get projects collection
-    const projects = await getProjectsCollection();
+    /*
+     * 10. Get projects collection.
+     */
+    const projects =
+      await getProjectsCollection();
 
-    // 11. Fetch projects belonging to the organization
-    const projectList = await projects
-      .find({
-        organizationId: orgId,
-      })
-      .sort({
-        createdAt: -1,
-      })
-      .toArray();
+    /*
+     * 11. Fetch projects belonging to
+     * this organization.
+     */
+    const projectList =
+      await projects
+        .find({
+          organizationId: orgId,
+        })
+        .sort({
+          createdAt: -1,
+        })
+        .toArray();
 
-    // 12. Return projects
+    /*
+     * 12. Return projects.
+     */
     return NextResponse.json(
       {
         success: true,
@@ -321,7 +576,10 @@ export async function GET(request: Request) {
       { status: 200 }
     );
   } catch (error) {
-    console.error("Get projects error:", error);
+    console.error(
+      "Get projects error:",
+      error
+    );
 
     return NextResponse.json(
       {
