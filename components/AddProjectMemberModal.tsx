@@ -57,7 +57,7 @@ export function AddProjectMemberModal({
           Add Member to Project
         </h2>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          Enter the user's registered name or email address to add them to this project.
+          Enter the user&apos;s registered name or email address to add them to this project.
         </p>
 
         {error && (

@@ -55,14 +55,27 @@ export function useProjectMembers(projectId: string | null) {
   }, [projectId]);
 
   // Automatically fetch members when projectId changes
-  useEffect(() => {
-    if (projectId) {
-      loadProjectMembers();
-    } else {
-      setMembers([]);
-    }
-  }, [projectId, loadProjectMembers]);
+  // ✅ Correct Option B: Reset inside async function block
+useEffect(() => {
+  let isSubscribed = true;
 
+  async function syncMembers() {
+    if (projectId) {
+      await loadProjectMembers();
+    } else if (isSubscribed) {
+      // Async scheduling prevents synchronous cascading render warning
+      Promise.resolve().then(() => {
+        if (isSubscribed) setMembers([]);
+      });
+    }
+  }
+
+  syncMembers();
+
+  return () => {
+    isSubscribed = false;
+  };
+}, [projectId, loadProjectMembers]);
   // Add member using your POST endpoint
   const addProjectMember = async (
     identifier: string,
