@@ -3,6 +3,7 @@ import { ObjectId } from "mongodb";
 import { getServerSession } from "next-auth";
 
 import { authOptions } from "@/lib/auth";
+import getMongoClient from "@/lib/mongodb";
 
 import {
   ensureProjectMemberIndexes,
@@ -28,7 +29,7 @@ const PROJECT_MEMBER_ROLES: ProjectMemberRole[] = [
 ];
 
 interface RequestBody {
-  userId: string;
+  identifier?: string;
   role?: ProjectMemberRole;
 }
 
@@ -75,6 +76,9 @@ export async function POST(
 
     /*
      * Validate authenticated user ID.
+     *
+     * This is the ID of the person making the request.
+     * It is NOT the identifier of the person being added.
      */
     if (!ObjectId.isValid(session.user.id)) {
       return NextResponse.json(
@@ -97,20 +101,43 @@ export async function POST(
       );
     }
 
+    /*
+     * The frontend sends:
+     *
+     * {
+     *   identifier: "john@example.com",
+     *   role: "editor"
+     * }
+     *
+     * OR:
+     *
+     * {
+     *   identifier: "John Doe",
+     *   role: "editor"
+     * }
+     */
     const {
-      userId: targetUserId,
+      identifier,
       role = "member",
     } = body;
 
     /*
-     * Validate target user ID.
+     * Validate target user identifier.
      */
-    if (!targetUserId || !ObjectId.isValid(targetUserId)) {
+    if (
+      !identifier ||
+      typeof identifier !== "string" ||
+      identifier.trim().length === 0
+    ) {
       return NextResponse.json(
-        { error: "A valid userId is required." },
+        {
+          error: "A user email or name is required.",
+        },
         { status: 400 }
       );
     }
+
+    const normalizedIdentifier = identifier.trim();
 
     /*
      * Validate project role.
@@ -127,16 +154,27 @@ export async function POST(
     }
 
     const projectObjectId = new ObjectId(projectId);
-    const requesterObjectId = new ObjectId(session.user.id);
-    const targetUserObjectId = new ObjectId(targetUserId);
 
-    const projects = await getProjectsCollection();
+    const requesterObjectId = new ObjectId(
+      session.user.id
+    );
+
+    /*
+     * Get collections.
+     */
+    const projects =
+      await getProjectsCollection();
 
     const organizationMembers =
       await getOrganizationMembersCollection();
 
     const projectMembers =
       await getProjectMembersCollection();
+
+    // Directly access the database and users collection
+    const client = await getMongoClient();
+    const db = client.db();
+    const users = db.collection("users");
 
     /*
      * Find the project.
@@ -190,8 +228,50 @@ export async function POST(
     }
 
     /*
-     * Verify that the target user belongs to the
-     * same organization.
+     * Find the target user by email OR name.
+     */
+    const targetUser = await users.findOne({
+      $or: [
+        {
+          email: normalizedIdentifier.toLowerCase(),
+        },
+        {
+          name: normalizedIdentifier,
+        },
+      ],
+    });
+
+    /*
+     * Target user does not exist.
+     */
+    if (!targetUser) {
+      return NextResponse.json(
+        {
+          error:
+            "No user was found with that email address or name.",
+        },
+        { status: 404 }
+      );
+    }
+
+    /*
+     * Ensure the target user has a valid ID.
+     */
+    if (!targetUser._id) {
+      return NextResponse.json(
+        {
+          error:
+            "The selected user has an invalid user ID.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const targetUserObjectId = targetUser._id as ObjectId;
+
+    /*
+     * Verify that the target user belongs to
+     * the same organization.
      */
     const targetMembership =
       await organizationMembers.findOne({
@@ -244,11 +324,17 @@ export async function POST(
     };
 
     const result =
-      await projectMembers.insertOne(projectMember);
+      await projectMembers.insertOne(
+        projectMember
+      );
 
+    /*
+     * Return the created project membership.
+     */
     return NextResponse.json(
       {
-        message: "Project member added successfully.",
+        message:
+          "Project member added successfully.",
         projectMember: {
           _id: result.insertedId,
           ...projectMember,
@@ -257,11 +343,15 @@ export async function POST(
       { status: 201 }
     );
   } catch (error) {
-    console.error("Add project member error:", error);
+    console.error(
+      "Add project member error:",
+      error
+    );
 
     return NextResponse.json(
       {
-        error: "Unable to add project member.",
+        error:
+          "Unable to add project member.",
       },
       { status: 500 }
     );
@@ -271,7 +361,7 @@ export async function POST(
 /**
  * GET
  *
- * Retrieve all members assigned to a project.
+ * Retrieve all members assigned to a project along with user profile details.
  */
 export async function GET(
   request: NextRequest,
@@ -367,17 +457,55 @@ export async function GET(
 
     /*
      * Retrieve all members assigned to the project.
-     *
-     * Sort by creation time so the earliest assigned
-     * members appear first.
+     * Use $lookup to join with the users collection to retrieve name, email, image.
      */
     const members = await projectMembers
-      .find({
-        projectId: projectObjectId,
-      })
-      .sort({
-        createdAt: 1,
-      })
+      .aggregate([
+        {
+          $match: {
+            projectId: projectObjectId,
+          },
+        },
+        {
+          $sort: {
+            createdAt: 1,
+          },
+        },
+        {
+          $lookup: {
+            from: "users",
+            localField: "userId",
+            foreignField: "_id",
+            as: "userDetails",
+          },
+        },
+        {
+          $unwind: {
+            path: "$userDetails",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $project: {
+            _id: 1,
+            projectId: 1,
+            organizationId: 1,
+            userId: 1,
+            role: 1,
+            createdAt: 1,
+            updatedAt: 1,
+            userName: {
+              $ifNull: [
+                "$userDetails.name",
+                "$userDetails.username",
+                "Unknown Member",
+              ],
+            },
+            userEmail: "$userDetails.email",
+            userImage: "$userDetails.image",
+          },
+        },
+      ])
       .toArray();
 
     return NextResponse.json(
