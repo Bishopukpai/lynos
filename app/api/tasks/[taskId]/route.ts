@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import getMongoClientPromise from "@/lib/mongodb";
-import { ObjectId, Filter, Document } from "mongodb";
+import { ObjectId, Filter, Document, UpdateFilter } from "mongodb";
 
 export enum TaskStatus {
   TODO = "TODO",
@@ -18,10 +18,34 @@ export enum TaskPriority {
   URGENT = "URGENT",
 }
 
+interface TaskActivity {
+  _id: ObjectId;
+  actor: ObjectId | string;
+  action: string;
+  details: string;
+  createdAt: Date;
+}
+
+interface TaskComment {
+  _id: ObjectId;
+  author: ObjectId | string;
+  content: string;
+  createdAt: Date;
+}
+
+function getFlexibleIdFilter(idString: string) {
+  if (!idString) return [];
+  const ids: (ObjectId | string)[] = [idString];
+  if (ObjectId.isValid(idString)) {
+    ids.push(new ObjectId(idString));
+  }
+  return ids;
+}
+
 // PATCH /api/tasks/[taskId] - Update task details, status, assignee, or add comments
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { taskId: string } }
+  { params }: { params: Promise<{ taskId: string }> | { taskId: string } }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -29,16 +53,20 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    // Await params for Next.js 15 compatibility
+    const resolvedParams = await params;
+    const taskIdStr = resolvedParams.taskId;
+
     const body = await req.json();
     const { status, priority, assigneeId, comment, title, description, dueDate } = body;
 
     const client = await getMongoClientPromise();
     const db = client.db();
 
+    const matchedTaskIds = getFlexibleIdFilter(taskIdStr);
+
     const taskFilter = {
-      _id: ObjectId.isValid(params.taskId)
-        ? new ObjectId(params.taskId)
-        : params.taskId,
+      _id: { $in: matchedTaskIds },
     } as unknown as Filter<Document>;
 
     const task = await db.collection("tasks").findOne(taskFilter);
@@ -51,8 +79,8 @@ export async function PATCH(
       : session.user.id;
 
     const now = new Date();
-    const updateFields: Record<string, any> = { updatedAt: now };
-    const activitiesToAdd: any[] = [];
+    const updateFields: Record<string, unknown> = { updatedAt: now };
+    const activitiesToAdd: TaskActivity[] = [];
 
     if (status && status !== task.status) {
       activitiesToAdd.push({
@@ -100,19 +128,20 @@ export async function PATCH(
       updateFields.dueDate = dueDate ? new Date(dueDate) : null;
     }
 
-    const updateQuery: Record<string, any> = {
+    const updateQuery: UpdateFilter<Document> = {
       $set: updateFields,
     };
 
-    const pushFields: Record<string, any> = {};
+    const pushFields: Record<string, unknown> = {};
 
     if (comment?.trim()) {
-      pushFields.comments = {
+      const newComment: TaskComment = {
         _id: new ObjectId(),
         author: userObjectId,
         content: comment.trim(),
         createdAt: now,
       };
+      pushFields.comments = newComment;
 
       activitiesToAdd.push({
         _id: new ObjectId(),
@@ -128,19 +157,15 @@ export async function PATCH(
     }
 
     if (Object.keys(pushFields).length > 0) {
-      updateQuery.$push = pushFields;
+      updateQuery.$push = pushFields as UpdateFilter<Document>["$push"];
     }
 
     await db.collection("tasks").updateOne(taskFilter, updateQuery);
 
-    const targetTaskId = ObjectId.isValid(params.taskId)
-      ? new ObjectId(params.taskId)
-      : params.taskId;
-
     const [updatedTask] = await db
       .collection("tasks")
       .aggregate([
-        { $match: { _id: targetTaskId } },
+        { $match: { _id: { $in: matchedTaskIds } } },
         {
           $lookup: {
             from: "users",
@@ -258,6 +283,7 @@ export async function PATCH(
 
     return NextResponse.json({ task: updatedTask });
   } catch (error) {
+    console.error("PATCH task error:", error);
     return NextResponse.json(
       { error: "Failed to update task" },
       { status: 500 }
