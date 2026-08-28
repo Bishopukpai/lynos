@@ -1,34 +1,9 @@
+// models/Task.ts
 import mongoose, { Schema, Document, Model } from "mongoose";
+import { TaskStatus, TaskPriority } from "@/types/task";
 
-export enum TaskStatus {
-  BACKLOG = "BACKLOG",
-  TODO = "TODO",
-  IN_PROGRESS = "IN_PROGRESS",
-  IN_REVIEW = "IN_REVIEW",
-  DONE = "DONE",
-}
-
-export enum TaskPriority {
-  LOW = "LOW",
-  MEDIUM = "MEDIUM",
-  HIGH = "HIGH",
-  URGENT = "URGENT",
-}
-
-export interface ITaskComment {
-  _id?: string;
-  author: mongoose.Types.ObjectId;
-  content: string;
-  createdAt: Date;
-}
-
-export interface ITaskActivity {
-  _id?: string;
-  actor: mongoose.Types.ObjectId;
-  action: string;
-  details?: string;
-  createdAt: Date;
-}
+// Re-export them so your server-side API routes don't break
+export { TaskStatus, TaskPriority };
 
 export interface ITask extends Document {
   title: string;
@@ -40,13 +15,24 @@ export interface ITask extends Document {
   status: TaskStatus;
   priority: TaskPriority;
   dueDate?: Date;
-  comments: ITaskComment[];
-  activities: ITaskActivity[];
+  comments: {
+    _id?: mongoose.Types.ObjectId;
+    author: mongoose.Types.ObjectId;
+    content: string;
+    createdAt: Date;
+  }[];
+  activities: {
+    _id?: mongoose.Types.ObjectId;
+    actor: mongoose.Types.ObjectId;
+    action: string;
+    details?: string;
+    createdAt: Date;
+  }[];
   createdAt: Date;
   updatedAt: Date;
 }
 
-const CommentSchema = new Schema<ITaskComment>(
+const CommentSchema = new Schema(
   {
     author: { type: Schema.Types.ObjectId, ref: "User", required: true },
     content: { type: String, required: true, trim: true },
@@ -55,7 +41,7 @@ const CommentSchema = new Schema<ITaskComment>(
   { _id: true }
 );
 
-const ActivitySchema = new Schema<ITaskActivity>(
+const ActivitySchema = new Schema(
   {
     actor: { type: Schema.Types.ObjectId, ref: "User", required: true },
     action: { type: String, required: true },
