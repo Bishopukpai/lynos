@@ -173,7 +173,7 @@ export async function GET(
       .toArray();
 
     return NextResponse.json({ tasks });
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to fetch tasks" },
       { status: 500 }
@@ -352,7 +352,7 @@ export async function POST(
       .toArray();
 
     return NextResponse.json({ task: populatedTask }, { status: 201 });
-  } catch (error) {
+  } catch (_error) {
     return NextResponse.json(
       { error: "Failed to create task" },
       { status: 500 }

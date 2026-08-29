@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth"; // Adjust to your NextAuth config path
+import { authOptions } from "@/lib/auth";
 import getMongoClientPromise from "../../../../../lib/mongodb";
 import { ObjectId, PushOperator, Document } from "mongodb";
 
@@ -64,11 +64,15 @@ export async function PATCH(
 
     const { projectId } = await params;
     const body = await req.json();
-    const { section, item } = body; // section: 'scenes' | 'locations' | 'cast' | 'crew' | 'shootDays'
+    const { section, item } = body;
 
-    if (!["scenes", "locations", "cast", "crew", "shootDays"].includes(section)) {
+    const validSections = ["scenes", "locations", "cast", "crew", "shootDays", "roster"];
+    if (!validSections.includes(section)) {
       return NextResponse.json({ error: "Invalid section specified" }, { status: 400 });
     }
+
+    // Map roster requests to crew array in database
+    const targetSection = section === "roster" ? "crew" : section;
 
     const client = await getMongoClientPromise();
     const db = client.db();
@@ -84,7 +88,7 @@ export async function PATCH(
     };
 
     const pushUpdate: PushOperator<Document> = {
-      [section]: itemWithId,
+      [targetSection]: itemWithId,
     };
 
     const updatedPlan = await collection.findOneAndUpdate(
