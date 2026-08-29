@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth"; // Adjust to your NextAuth config path
-import getMongoClientPromise from "../../../../../lib/mongodb"; // MongoDB native driver promise helper
-import { ObjectId } from "mongodb";
+import getMongoClientPromise from "../../../../../lib/mongodb";
+import { ObjectId, PushOperator, Document } from "mongodb";
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -14,14 +14,15 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const { projectId } = await params;
+
     const client = await getMongoClientPromise();
     const db = client.db();
     const collection = db.collection("production_plans");
 
-    // Convert string projectId to ObjectId if applicable, or keep as string depending on your DB schema design
-    const projectIdQuery = ObjectId.isValid(params.projectId)
-      ? new ObjectId(params.projectId)
-      : params.projectId;
+    const projectIdQuery = ObjectId.isValid(projectId)
+      ? new ObjectId(projectId)
+      : projectId;
 
     let plan = await collection.findOne({ projectId: projectIdQuery });
 
@@ -53,7 +54,7 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  { params }: { params: { projectId: string } }
+  { params }: { params: Promise<{ projectId: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -61,6 +62,7 @@ export async function PATCH(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const { projectId } = await params;
     const body = await req.json();
     const { section, item } = body; // section: 'scenes' | 'locations' | 'cast' | 'crew' | 'shootDays'
 
@@ -72,20 +74,23 @@ export async function PATCH(
     const db = client.db();
     const collection = db.collection("production_plans");
 
-    const projectIdQuery = ObjectId.isValid(params.projectId)
-      ? new ObjectId(params.projectId)
-      : params.projectId;
+    const projectIdQuery = ObjectId.isValid(projectId)
+      ? new ObjectId(projectId)
+      : projectId;
 
-    // Attach a generated ObjectId to the nested array item if not present
     const itemWithId = {
       _id: new ObjectId(),
       ...item,
     };
 
+    const pushUpdate: PushOperator<Document> = {
+      [section]: itemWithId,
+    };
+
     const updatedPlan = await collection.findOneAndUpdate(
       { projectId: projectIdQuery },
       {
-        $push: { [section]: itemWithId } as any,
+        $push: pushUpdate,
         $set: { updatedAt: new Date() },
         $setOnInsert: { createdAt: new Date() },
       },
