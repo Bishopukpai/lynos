@@ -9,7 +9,6 @@ import {
   Users,
   Settings,
   HelpCircle,
-  LogOut,
 } from "lucide-react";
 
 interface NavItem {

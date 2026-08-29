@@ -6,6 +6,7 @@ import {
   Activity,
   Bell,
   Bot,
+  CalendarDays,
   Check,
   ChevronDown,
   FolderKanban,
@@ -29,6 +30,7 @@ import CreateProjectModal from "@/components/CreateProjectModal";
 import PendingInvitationsManager from "@/components/PendingInvitationsManager";
 import { AddProjectMemberModal } from "@/components/AddProjectMemberModal";
 import ProductionTasksBoard from "@/components/ProductionTasksBoard";
+import ProductionPlanner from "@/components/ProductionPlanner";
 import { useDashboard } from "@/hooks/useDashboard";
 import { useProjectMembers } from "@/hooks/useProjectMembers";
 import { StatItem } from "@/types/dashboard";
@@ -98,10 +100,10 @@ export default function DashboardPage() {
     loadInvitations,
   } = useDashboard();
 
+  // Active navigation tab state
+  const [activeTab, setActiveTab] = useState<TabType | "planning">("overview");
 
-// Update state initialization with the explicit type
- const [activeTab, setActiveTab] = useState<TabType>("overview"); 
-  // Selected project state for adding members and viewing tasks
+  // Selected project state for adding members, viewing tasks, and production planning
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
   // Hook for managing project members separately from global dashboard state
@@ -123,6 +125,11 @@ export default function DashboardPage() {
   const handleOpenTasks = (projectId: string) => {
     setSelectedProjectId(projectId);
     setActiveTab("tasks");
+  };
+
+  const handleOpenPlanning = (projectId: string) => {
+    setSelectedProjectId(projectId);
+    setActiveTab("planning");
   };
 
   // Dynamic calculations for real stats data
@@ -178,210 +185,223 @@ export default function DashboardPage() {
       )}
 
       {/* Sidebar */}
-<aside
-  className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200 bg-white transition-transform duration-200 lg:translate-x-0 ${
-    sidebarOpen ? "translate-x-0" : "-translate-x-full"
-  }`}
->
-  <div className="flex h-16 items-center justify-between border-b border-slate-200 px-5">
-    <div className="flex items-center gap-2.5">
-      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm shadow-indigo-200">
-        <Sparkles className="h-5 w-5" />
-      </div>
-
-      <span className="text-lg font-bold tracking-tight">LYNOS</span>
-    </div>
-
-    <button
-      type="button"
-      onClick={() => setSidebarOpen(false)}
-      className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden"
-      aria-label="Close sidebar"
-    >
-      <X className="h-5 w-5" />
-    </button>
-  </div>
-
-  {/* Workspace Switcher */}
-  <div className="relative border-b border-slate-200 p-4">
-    <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-      Workspace
-    </p>
-
-    <button
-      type="button"
-      onClick={() => setWorkspaceMenuOpen((open) => !open)}
-      disabled={organizationsLoading}
-      className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left transition hover:border-indigo-200 hover:bg-slate-100/80 disabled:opacity-60"
-    >
-      <div className="min-w-0">
-        <p className="truncate text-sm font-semibold text-slate-900">
-          {organizationsLoading
-            ? "Loading..."
-            : selectedOrganization
-            ? selectedOrganization.name
-            : "No workspace"}
-        </p>
-
-        {selectedOrganization && (
-          <p className="mt-0.5 truncate text-xs capitalize text-slate-500">
-            {selectedOrganization.role}
-          </p>
-        )}
-      </div>
-
-      <ChevronDown
-        className={`ml-2 h-4 w-4 shrink-0 text-slate-500 transition-transform duration-200 ${
-          workspaceMenuOpen ? "rotate-180" : ""
+      <aside
+        className={`fixed inset-y-0 left-0 z-50 flex w-64 flex-col border-r border-slate-200 bg-white transition-transform duration-200 lg:translate-x-0 ${
+          sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
-      />
-    </button>
+      >
+        <div className="flex h-16 items-center justify-between border-b border-slate-200 px-5">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-sm shadow-indigo-200">
+              <Sparkles className="h-5 w-5" />
+            </div>
 
-    {workspaceMenuOpen && !organizationsLoading && (
-      <div className="absolute left-4 right-4 top-[calc(100%-0.5rem)] z-50 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xl shadow-slate-200/50">
-        <div className="max-h-64 overflow-y-auto p-1.5">
-          {organizations.map((org) => (
-            <button
-              key={org.id}
-              type="button"
-              onClick={() => handleWorkspaceSwitch(org.id)}
-              className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition hover:bg-slate-50"
-            >
-              <div className="min-w-0">
-                <p
-                  className={`truncate text-sm font-medium ${
-                    org.id === selectedOrganizationId
-                      ? "text-indigo-700 font-semibold"
-                      : "text-slate-800"
-                  }`}
-                >
-                  {org.name}
-                </p>
+            <span className="text-lg font-bold tracking-tight">LYNOS</span>
+          </div>
 
-                <p className="mt-0.5 text-[11px] capitalize text-slate-400">
-                  {org.role}
-                </p>
-              </div>
-
-              {org.id === selectedOrganizationId && (
-                <Check className="h-4 w-4 text-indigo-600" />
-              )}
-            </button>
-          ))}
-        </div>
-
-        <div className="border-t border-slate-100 p-1.5">
           <button
             type="button"
-            onClick={() => {
-              setWorkspaceMenuOpen(false);
-              setCreateWorkspaceOpen(true);
-            }}
-            className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-indigo-600 hover:bg-indigo-50/70"
+            onClick={() => setSidebarOpen(false)}
+            className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 lg:hidden"
+            aria-label="Close sidebar"
           >
-            <Plus className="h-4 w-4" />
-            Create workspace
+            <X className="h-5 w-5" />
           </button>
         </div>
-      </div>
-    )}
-  </div>
 
-  {/* Navigation */}
-  <nav className="flex-1 space-y-1 overflow-y-auto p-4">
-    <p className="mb-3 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-      Workspace
-    </p>
+        {/* Workspace Switcher */}
+        <div className="relative border-b border-slate-200 p-4">
+          <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            Workspace
+          </p>
 
-    <button
-      type="button"
-      onClick={() => setActiveTab("overview")}
-      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
-        activeTab === "overview"
-          ? "bg-indigo-50/80 text-indigo-700"
-          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-      }`}
-    >
-      <LayoutDashboard className="h-4 w-4" />
-      Dashboard
-    </button>
+          <button
+            type="button"
+            onClick={() => setWorkspaceMenuOpen((open) => !open)}
+            disabled={organizationsLoading}
+            className="flex w-full items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-left transition hover:border-indigo-200 hover:bg-slate-100/80 disabled:opacity-60"
+          >
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-slate-900">
+                {organizationsLoading
+                  ? "Loading..."
+                  : selectedOrganization
+                  ? selectedOrganization.name
+                  : "No workspace"}
+              </p>
 
-    <button
-      type="button"
-      onClick={() => setActiveTab("tasks")}
-      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
-        activeTab === "tasks"
-          ? "bg-indigo-50/80 text-indigo-700"
-          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-      }`}
-    >
-      <ListTodo className="h-4 w-4" />
-      Tasks Board
-    </button>
+              {selectedOrganization && (
+                <p className="mt-0.5 truncate text-xs capitalize text-slate-500">
+                  {selectedOrganization.role}
+                </p>
+              )}
+            </div>
 
-    <button
-      type="button"
-      onClick={() => setActiveTab("agents")}
-      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
-        activeTab === "agents"
-          ? "bg-indigo-50/80 text-indigo-700"
-          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-      }`}
-    >
-      <Bot className="h-4 w-4" />
-      AI Agents
-    </button>
+            <ChevronDown
+              className={`ml-2 h-4 w-4 shrink-0 text-slate-500 transition-transform duration-200 ${
+                workspaceMenuOpen ? "rotate-180" : ""
+              }`}
+            />
+          </button>
 
-    <button
-      type="button"
-      onClick={() => setActiveTab("team")}
-      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
-        activeTab === "team"
-          ? "bg-indigo-50/80 text-indigo-700"
-          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-      }`}
-    >
-      <Users className="h-4 w-4" />
-      Team
-    </button>
+          {workspaceMenuOpen && !organizationsLoading && (
+            <div className="absolute left-4 right-4 top-[calc(100%-0.5rem)] z-50 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xl shadow-slate-200/50">
+              <div className="max-h-64 overflow-y-auto p-1.5">
+                {organizations.map((org) => (
+                  <button
+                    key={org.id}
+                    type="button"
+                    onClick={() => handleWorkspaceSwitch(org.id)}
+                    className="flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left transition hover:bg-slate-50"
+                  >
+                    <div className="min-w-0">
+                      <p
+                        className={`truncate text-sm font-medium ${
+                          org.id === selectedOrganizationId
+                            ? "text-indigo-700 font-semibold"
+                            : "text-slate-800"
+                        }`}
+                      >
+                        {org.name}
+                      </p>
 
-    <div className="my-5 border-t border-slate-200" />
+                      <p className="mt-0.5 text-[11px] capitalize text-slate-400">
+                        {org.role}
+                      </p>
+                    </div>
 
-    <p className="mb-3 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-      Management
-    </p>
+                    {org.id === selectedOrganizationId && (
+                      <Check className="h-4 w-4 text-indigo-600" />
+                    )}
+                  </button>
+                ))}
+              </div>
 
-    <button
-      type="button"
-      onClick={() => setActiveTab("activity")}
-      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
-        activeTab === "activity"
-          ? "bg-indigo-50/80 text-indigo-700"
-          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-      }`}
-    >
-      <Activity className="h-4 w-4" />
-      Activity
-    </button>
+              <div className="border-t border-slate-100 p-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWorkspaceMenuOpen(false);
+                    setCreateWorkspaceOpen(true);
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-indigo-600 hover:bg-indigo-50/70"
+                >
+                  <Plus className="h-4 w-4" />
+                  Create workspace
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
 
-    <button
-      type="button"
-      onClick={() => setActiveTab("settings")}
-      className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
-        activeTab === "settings"
-          ? "bg-indigo-50/80 text-indigo-700"
-          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-      }`}
-    >
-      <Settings className="h-4 w-4" />
-      Settings
-    </button>
-  </nav>
+        {/* Navigation */}
+        <nav className="flex-1 space-y-1 overflow-y-auto p-4">
+          <p className="mb-3 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            Workspace
+          </p>
 
-  <div className="border-t border-slate-200 p-4">
-    <UserProfileMenu variant="sidebar" />
-  </div>
-</aside>
+          <button
+            type="button"
+            onClick={() => setActiveTab("overview")}
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+              activeTab === "overview"
+                ? "bg-indigo-50/80 text-indigo-700"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+          >
+            <LayoutDashboard className="h-4 w-4" />
+            Dashboard
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("planning")}
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+              activeTab === "planning"
+                ? "bg-indigo-50/80 text-indigo-700"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+          >
+            <CalendarDays className="h-4 w-4" />
+            Production Planning
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("tasks")}
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+              activeTab === "tasks"
+                ? "bg-indigo-50/80 text-indigo-700"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+          >
+            <ListTodo className="h-4 w-4" />
+            Tasks Board
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("agents")}
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+              activeTab === "agents"
+                ? "bg-indigo-50/80 text-indigo-700"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+          >
+            <Bot className="h-4 w-4" />
+            AI Agents
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("team")}
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+              activeTab === "team"
+                ? "bg-indigo-50/80 text-indigo-700"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+          >
+            <Users className="h-4 w-4" />
+            Team
+          </button>
+
+          <div className="my-5 border-t border-slate-200" />
+
+          <p className="mb-3 px-3 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            Management
+          </p>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("activity")}
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+              activeTab === "activity"
+                ? "bg-indigo-50/80 text-indigo-700"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+          >
+            <Activity className="h-4 w-4" />
+            Activity
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab("settings")}
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+              activeTab === "settings"
+                ? "bg-indigo-50/80 text-indigo-700"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+          >
+            <Settings className="h-4 w-4" />
+            Settings
+          </button>
+        </nav>
+
+        <div className="border-t border-slate-200 p-4">
+          <UserProfileMenu variant="sidebar" />
+        </div>
+      </aside>
 
       {/* Main Container */}
       <div className="lg:pl-64">
@@ -542,7 +562,7 @@ export default function DashboardPage() {
                 })}
               </section>
 
-              {/* Pending Invitations Management (Admins/Owners Only) */}
+              {/* Pending Invitations Management */}
               {canManageInvitations && selectedOrganizationId && (
                 <section className="mt-8">
                   {invitationsError && (
@@ -629,23 +649,34 @@ export default function DashboardPage() {
                               </p>
                             </div>
 
-                            <div className="flex items-center gap-3 shrink-0">
-                              <span className="text-sm font-bold text-slate-900">
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="mr-2 text-sm font-bold text-slate-900">
                                 ${project.budget.toLocaleString()}
                               </span>
+
+                              {/* Action: Planning Interface */}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenPlanning(project._id)}
+                                className="group inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition-all hover:bg-indigo-100/80 active:scale-95"
+                                title="Open production planning for this project"
+                              >
+                                <CalendarDays className="h-3.5 w-3.5" />
+                                <span>Plan</span>
+                              </button>
 
                               {/* Action: Open Task Board */}
                               <button
                                 type="button"
                                 onClick={() => handleOpenTasks(project._id)}
-                                className="group inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/50 px-3 py-1.5 text-xs font-semibold text-indigo-700 transition-all hover:bg-indigo-100/80 active:scale-95"
+                                className="group inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-all hover:border-indigo-200 hover:bg-indigo-50/50 hover:text-indigo-600 active:scale-95"
                                 title="View tasks for this project"
                               >
                                 <ListTodo className="h-3.5 w-3.5" />
                                 <span>Tasks</span>
                               </button>
 
-                              {/* Refined Add Member Button */}
+                              {/* Add Member Button */}
                               <button
                                 type="button"
                                 onClick={() => handleOpenAddMemberModal(project._id)}
@@ -718,6 +749,54 @@ export default function DashboardPage() {
                 </div>
               </section>
             </>
+          ) : activeTab === "planning" ? (
+            /* Production Planning View */
+            <section className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+                    Production Planning
+                  </h1>
+                  <p className="text-sm text-slate-500">
+                    {activeProject
+                      ? `Managing production schedule and assets for: ${activeProject.title}`
+                      : "Select a project to manage timelines, schedules, and planning assets."}
+                  </p>
+                </div>
+
+                {projects.length > 0 && (
+                  <select
+                    value={selectedProjectId || ""}
+                    onChange={(e) => setSelectedProjectId(e.target.value || null)}
+                    className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm outline-none focus:border-indigo-500"
+                  >
+                    <option value="">Select Project...</option>
+                    {projects.map((p) => (
+                      <option key={p._id} value={p._id}>
+                        {p.title}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              {selectedProjectId ? (
+                <ProductionPlanner
+                  projectId={selectedProjectId}
+                  members={members}
+                />
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
+                  <CalendarDays className="mx-auto h-10 w-10 text-slate-300" />
+                  <p className="mt-2 text-base font-semibold text-slate-800">
+                    No project selected
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Choose a project from the dropdown above or click &quot;Plan&quot; next to a project on the Overview page.
+                  </p>
+                </div>
+              )}
+            </section>
           ) : (
             /* Tasks View */
             <section className="space-y-6">
