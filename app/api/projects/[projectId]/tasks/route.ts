@@ -105,6 +105,7 @@ export async function GET(
           $project: {
             title: 1,
             description: 1,
+            department: 1,
             projectId: 1,
             organizationId: 1,
             priority: 1,
@@ -188,11 +189,11 @@ export async function POST(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    if (!session?.user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { title, description, assigneeId, priority, status, dueDate } =
+    const { title, description, department, assigneeId, priority, status, dueDate } =
       await req.json();
 
     if (!title?.trim()) {
@@ -222,9 +223,10 @@ export async function POST(
       return NextResponse.json({ error: "Project not found" }, { status: 404 });
     }
 
-    const userId = ObjectId.isValid(session.user.id)
-      ? new ObjectId(session.user.id)
-      : session.user.id;
+    const rawUserId = (session.user as { id?: string }).id || session.user.email;
+    const userId = rawUserId && ObjectId.isValid(rawUserId)
+      ? new ObjectId(rawUserId)
+      : rawUserId;
 
     const formattedAssigneeId =
       assigneeId && ObjectId.isValid(assigneeId)
@@ -236,15 +238,25 @@ export async function POST(
       ? new ObjectId(projectId)
       : projectId;
 
+    // Normalize Priority & Status to Uppercase Enums safely
+    const normalizedPriority = priority
+      ? priority.toString().toUpperCase()
+      : TaskPriority.MEDIUM;
+
+    const normalizedStatus = status
+      ? status.toString().toUpperCase()
+      : TaskStatus.TODO;
+
     const newTaskData = {
       title: title.trim(),
       description: description || "",
+      department: department || "General",
       projectId: targetProjectId,
       organizationId: project.organizationId || null,
       assigneeId: formattedAssigneeId,
       createdById: userId,
-      priority: priority || TaskPriority.MEDIUM,
-      status: status || TaskStatus.TODO,
+      priority: normalizedPriority,
+      status: normalizedStatus,
       dueDate: dueDate ? new Date(dueDate) : null,
       comments: [],
       activities: [
@@ -306,6 +318,7 @@ export async function POST(
           $project: {
             title: 1,
             description: 1,
+            department: 1,
             projectId: 1,
             organizationId: 1,
             priority: 1,
@@ -352,7 +365,8 @@ export async function POST(
       .toArray();
 
     return NextResponse.json({ task: populatedTask }, { status: 201 });
-  } catch (_error) {
+  } catch (error) {
+    console.error("Failed to create task:", error);
     return NextResponse.json(
       { error: "Failed to create task" },
       { status: 500 }
