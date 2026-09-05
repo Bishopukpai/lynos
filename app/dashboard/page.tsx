@@ -10,6 +10,7 @@ import {
   Check,
   ChevronDown,
   FolderKanban,
+  Globe,
   LayoutDashboard,
   ListTodo,
   Mail,
@@ -32,6 +33,7 @@ import { AddProjectMemberModal } from "@/components/AddProjectMemberModal";
 import ProductionTasksBoard from "@/components/ProductionTasksBoard";
 import ProductionPlanner from "@/components/ProductionPlanner";
 import ScenePilotAI from "@/components/ScenePilotAI";
+import ResearchIntelligence from "@/components/ResearchIntelligence";
 import { useDashboard } from "@/hooks/useDashboard";
 import { useProjectMembers } from "@/hooks/useProjectMembers";
 import { StatItem } from "@/types/dashboard";
@@ -102,9 +104,9 @@ export default function DashboardPage() {
   } = useDashboard();
 
   // Active navigation tab state
-  const [activeTab, setActiveTab] = useState<TabType | "planning" | "agents">("overview");
+  const [activeTab, setActiveTab] = useState<TabType | "planning" | "agents" | "research">("overview");
 
-  // Selected project state for adding members, viewing tasks, and production planning
+  // Selected project state for adding members, viewing tasks, production planning, and research
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
   // Hook for managing project members separately from global dashboard state
@@ -136,6 +138,11 @@ export default function DashboardPage() {
   const handleOpenAI = (projectId: string) => {
     setSelectedProjectId(projectId);
     setActiveTab("agents");
+  };
+
+  const handleOpenResearch = (projectId: string) => {
+    setSelectedProjectId(projectId);
+    setActiveTab("research");
   };
 
   // Dynamic calculations for real stats data
@@ -243,7 +250,6 @@ export default function DashboardPage() {
               }`}
             />
           </button>
-
           {workspaceMenuOpen && !organizationsLoading && (
             <div className="absolute left-4 right-4 top-[calc(100%-0.5rem)] z-50 overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-xl shadow-slate-200/50">
               <div className="max-h-64 overflow-y-auto p-1.5">
@@ -343,6 +349,18 @@ export default function DashboardPage() {
           >
             <Bot className="h-4 w-4" />
             AI Agents
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab("research")}
+            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-semibold transition-colors ${
+              activeTab === "research"
+                ? "bg-indigo-50/80 text-indigo-700"
+                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+            }`}
+          >
+            <Globe className="h-4 w-4 text-emerald-500" />
+            Market Research
           </button>
           <button
             type="button"
@@ -455,7 +473,6 @@ export default function DashboardPage() {
               {organizationsError}
             </div>
           )}
-
           {activeTab === "overview" ? (
             <>
               {/* Welcome Banner */}
@@ -625,6 +642,16 @@ export default function DashboardPage() {
                                 <Bot className="h-3.5 w-3.5" />
                                 <span>AI Agent</span>
                               </button>
+                              {/* Action: Market Research */}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenResearch(project._id)}
+                                className="group inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50/50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition-all hover:bg-emerald-100/80 active:scale-95"
+                                title="Open Parallel Market Research"
+                              >
+                                <Globe className="h-3.5 w-3.5 text-emerald-600" />
+                                <span>Research</span>
+                              </button>
                               {/* Action: Planning Interface */}
                               <button
                                 type="button"
@@ -752,6 +779,49 @@ export default function DashboardPage() {
                   </p>
                   <p className="mt-1 text-xs text-slate-500">
                     Choose a project from the dropdown above or click &quot;AI Agent&quot; next to a project on the Overview page.
+                  </p>
+                </div>
+              )}
+            </section>
+          ) : activeTab === "research" ? (
+            /* Market Research & Intelligence View */
+            <section className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+                    Market Research & Intelligence
+                  </h1>
+                  <p className="text-sm text-slate-500">
+                    {activeProject
+                      ? `Analyzing external market data for: ${activeProject.title}`
+                      : "Select a project to view parallel market insights and web research."}
+                  </p>
+                </div>
+                {projects.length > 0 && (
+                  <select
+                    value={selectedProjectId || ""}
+                    onChange={(e) => setSelectedProjectId(e.target.value || null)}
+                    className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm outline-none focus:border-indigo-500"
+                  >
+                    <option value="">Select Project...</option>
+                    {projects.map((p) => (
+                      <option key={p._id} value={p._id}>
+                        {p.title}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+              {selectedProjectId ? (
+                <ResearchIntelligence projectId={selectedProjectId} />
+              ) : (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center">
+                  <Globe className="mx-auto h-10 w-10 text-slate-300" />
+                  <p className="mt-2 text-base font-semibold text-slate-800">
+                    No project selected
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Choose a project from the dropdown above or click &quot;Research&quot; next to a project on the Overview page.
                   </p>
                 </div>
               )}
