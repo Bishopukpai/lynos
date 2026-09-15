@@ -166,8 +166,12 @@ export default function DashboardOverview({
             cancellingInvitationId={
               cancellingInvitationId
             }
-            onResend={onResendInvitation}
-            onCancel={onCancelInvitation}
+            onResend={
+              onResendInvitation
+            }
+            onCancel={
+              onCancelInvitation
+            }
           />
         )}
 
@@ -176,10 +180,16 @@ export default function DashboardOverview({
           projects={projects}
           loading={projectsLoading}
           error={projectsError}
-          onCreateProject={onCreateProject}
+          onCreateProject={
+            onCreateProject
+          }
           onOpenAI={onOpenAI}
-          onOpenResearch={onOpenResearch}
-          onOpenPlanning={onOpenPlanning}
+          onOpenResearch={
+            onOpenResearch
+          }
+          onOpenPlanning={
+            onOpenPlanning
+          }
           onOpenTasks={onOpenTasks}
           onAddMember={onAddMember}
         />
