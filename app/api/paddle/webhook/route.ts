@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   Environment,
   Paddle,
+  type SubscriptionNotification,
 } from "@paddle/paddle-node-sdk";
 import {
   Collection,
@@ -9,9 +10,7 @@ import {
 } from "mongodb";
 
 import getMongoClient from "@/lib/mongodb";
-import {
-  Organization,
-} from "@/models/organization";
+import { Organization } from "@/models/organization";
 
 export const runtime = "nodejs";
 
@@ -40,13 +39,9 @@ const paddleWebhookSecret =
   process.env.PADDLE_WEBHOOK_SECRET;
 
 const paddle = paddleApiKey
-  ? new Paddle(
-      paddleApiKey,
-      {
-        environment:
-          paddleEnvironment,
-      }
-    )
+  ? new Paddle(paddleApiKey, {
+      environment: paddleEnvironment,
+    })
   : null;
 
 /*
@@ -76,22 +71,30 @@ export async function GET() {
  * Synchronize a Paddle subscription
  * with the LYNOS organization.
  *
- * The Paddle Node SDK returns camelCase
- * properties such as:
+ * IMPORTANT:
  *
- * customerId
- * subscriptionId
- * customData
+ * Paddle's webhook SDK returns a
+ * SubscriptionNotification here, not the
+ * full API Subscription type.
  *
- * This is different from the raw Paddle API
- * JSON shape, which uses snake_case.
+ * SubscriptionNotification contains the
+ * fields available in subscription webhook
+ * payloads and intentionally does not contain
+ * some full-resource fields such as:
+ *
+ * - managementUrls
+ * - nextTransaction
+ * - recurringTransactionDetails
+ *
+ * We only use fields that are available
+ * in the webhook notification.
  */
 async function syncSubscription(
   organizations: Collection<Organization>,
-  subscription: any
+  subscription: SubscriptionNotification
 ) {
   const customerId =
-    subscription?.customerId;
+    subscription.customerId;
 
   if (!customerId) {
     console.warn(
@@ -102,7 +105,7 @@ async function syncSubscription(
   }
 
   const subscriptionId =
-    subscription?.id;
+    subscription.id;
 
   if (!subscriptionId) {
     console.warn(
@@ -113,18 +116,15 @@ async function syncSubscription(
   }
 
   const organizationId =
-    subscription
-      ?.customData
+    subscription.customData
       ?.organizationId;
 
   const plan =
-    subscription
-      ?.customData
+    subscription.customData
       ?.plan;
 
   const billingInterval =
-    subscription
-      ?.customData
+    subscription.customData
       ?.billingInterval;
 
   const updateData: Record<
@@ -408,7 +408,7 @@ export async function POST(
        *
        * This is especially important because
        * Paddle recommends using subscription.updated
-       * to keep your local subscription state
+       * to keep our local subscription state
        * synchronized.
        */
       case "subscription.updated": {
@@ -476,8 +476,8 @@ export async function POST(
        * Transaction completed.
        *
        * For recurring subscriptions, Paddle
-       * creates the subscription as part of
-       * the completed transaction flow.
+       * creates the subscription as part of the
+       * completed transaction flow.
        *
        * The subscription lifecycle events above
        * are responsible for maintaining our
